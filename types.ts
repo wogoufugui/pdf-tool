@@ -1,5 +1,6 @@
 
 export enum ToolType {
+  HOME = 'home',
   EDIT = 'edit',
   MERGE = 'merge',
   SPLIT = 'split',

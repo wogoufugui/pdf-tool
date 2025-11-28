@@ -1,14 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Lazy initialize the AI client.
-// This prevents the application from crashing at startup (white screen) if
-// process.env.API_KEY causes a reference error during initial module evaluation.
 const getAI = () => {
-  const apiKey = process.env.API_KEY;
+  // Access process.env.API_KEY safely.
+  // The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+  let apiKey = '';
+  try {
+    apiKey = process.env.API_KEY || '';
+  } catch (e) {
+    console.warn("process.env is not accessible");
+  }
+
   if (!apiKey) {
     console.warn("Gemini API Key is missing. AI features will not work.");
   }
-  return new GoogleGenAI({ apiKey: apiKey || '' });
+  return new GoogleGenAI({ apiKey: apiKey });
 };
 
 export const convertToTable = async (text: string): Promise<string> => {
