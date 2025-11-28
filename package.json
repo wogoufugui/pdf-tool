@@ -13,7 +13,7 @@
     "lucide-react": "^0.555.0",
     "react-dom": "^19.2.0",
     "react": "^19.2.0",
-    "pdfjs-dist": "^5.4.394",
+    "pdfjs-dist": "4.4.168",
     "file-saver": "^2.0.5",
     "marked": "^17.0.1",
     "pdf-lib": "^1.17.1"
