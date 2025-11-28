@@ -4,9 +4,10 @@ import App from './App';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker
-// Use .mjs worker from jsDelivr to ensure it matches the npm version (4.4.168) defined in importmap.
-// This prevents "Failed to fetch dynamically imported module" errors caused by version mismatches on cdnjs.
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Ensure we use the version from the installed package, or fallback to a known stable version.
+// We use the .mjs worker from jsDelivr which supports ES modules.
+const pdfJsVersion = pdfjsLib.version || '4.4.168';
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfJsVersion}/build/pdf.worker.min.mjs`;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
