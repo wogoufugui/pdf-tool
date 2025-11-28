@@ -4,18 +4,17 @@ import App from './App';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker
-// Use a robust fallback version if the imported package version is not detected correctly.
-// This ensures the worker matches the library version to prevent runtime errors.
 try {
-  // Handle different module shapes (ESM namespace vs default export)
-  const lib = (pdfjsLib as any).default || pdfjsLib;
+  // Use the imported namespace directly. 
+  // In modern bundlers with pdfjs-dist v4+, the exports are named.
+  const lib = pdfjsLib;
   const pdfJsVersion = lib.version || '4.4.168';
   
-  // Ensure GlobalWorkerOptions exists
+  // Ensure GlobalWorkerOptions exists and set the worker source
   if (lib.GlobalWorkerOptions) {
     lib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfJsVersion}/build/pdf.worker.min.mjs`;
   } else {
-    // Fallback or older version structure
+    // Fallback for older versions or different environments
     (window as any).pdfjsWorker = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfJsVersion}/build/pdf.worker.min.mjs`;
   }
 } catch (e) {
