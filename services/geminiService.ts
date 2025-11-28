@@ -1,11 +1,21 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialize the AI client.
+// This prevents the application from crashing at startup (white screen) if
+// process.env.API_KEY causes a reference error during initial module evaluation.
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing. AI features will not work.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey || '' });
+};
 
 export const convertToTable = async (text: string): Promise<string> => {
   if (!text.trim()) return "";
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Extract the data from the following text and format it as a clean HTML <table>. Do not include <html>, <body> or markdown code blocks, just the <table> element.\n\nText:\n${text.substring(0, 10000)}`,
@@ -27,6 +37,7 @@ export const translateText = async (text: string): Promise<string> => {
   if (!text.trim()) return "";
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Translate the following text into Simplified Chinese. Return only the translated text.\n\nText:\n${text}`,
