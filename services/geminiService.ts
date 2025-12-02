@@ -46,9 +46,9 @@ export const translateText = async (text: string): Promise<string> => {
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Translate the following text into Simplified Chinese. Return only the translated text.\n\nText:\n${text}`,
+      contents: `Translate the following text to Chinese (Simplified). Return the translated text directly.\n\nText:\n${text}`,
       config: {
-        systemInstruction: "You are a professional translator fluent in English and Chinese.",
+        systemInstruction: "You are a professional translator. Translate English or other languages to Chinese.",
       }
     });
     return response.text || "";

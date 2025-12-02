@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PDFDocument, rgb, StandardFonts, degrees, PDFName, PDFString } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFName, PDFString } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import saveAs from 'file-saver';
 import { 
   Type, Image as ImageIcon, Eraser, Download, ChevronLeft, ChevronRight, 
   MousePointer2, Square, Circle, Minus, Link as LinkIcon, Crop, 
-  Stamp, FileBadge, AppWindow, MoreHorizontal, Undo2, X, AlertCircle, UploadCloud
+  Stamp, FileBadge, AppWindow, X, UploadCloud, Undo2
 } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
 import { PDFEditOperation } from '../types';
 
 type EditorTool = 'cursor' | 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'link' | 'crop' | 'stamp';
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
+
+const HANDLE_SIZE = 10;
+const MIN_SIZE = 10;
 
 const EditPDF: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -22,11 +26,22 @@ const EditPDF: React.FC = () => {
   const [processing, setProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   
-  // Dragging state for shapes/erase/link/crop
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{x: number, y: number} | null>(null);
-  const [currentDragRect, setCurrentDragRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+  // Undo Stack
+  const [undoStack, setUndoStack] = useState<PDFEditOperation[][]>([]);
+  
+  // Interaction State
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
+  const [interactionMode, setInteractionMode] = useState<'none' | 'drawing' | 'moving' | 'resizing'>('none');
+  const [activeHandle, setActiveHandle] = useState<ResizeHandle | null>(null);
+  
+  // Temporary state for drag operations
+  const [dragStart, setDragStart] = useState<{x: number, y: number} | null>(null);
+  const [elementStartSnapshot, setElementStartSnapshot] = useState<Partial<PDFEditOperation> | null>(null);
+  const [currentDragRect, setCurrentDragRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+
+  // Refs for tracking undo state during continuous interactions (drag/resize)
+  const undoSnapshotRef = useRef<PDFEditOperation[] | null>(null);
+  const hasModifiedRef = useRef(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +50,8 @@ const EditPDF: React.FC = () => {
     const f = fs[0];
     setFile(f);
     setEdits([]);
+    setUndoStack([]); // Clear history on new file
+    setSelectedEditId(null);
     try {
       const arrayBuffer = await f.arrayBuffer();
       const doc = await PDFDocument.load(arrayBuffer);
@@ -91,35 +108,107 @@ const EditPDF: React.FC = () => {
     renderPage();
   }, [file, currPage]);
 
-  // --- Tool Actions ---
+  // --- Undo Logic ---
+
+  const pushUndo = () => {
+    setUndoStack(prev => [...prev, edits]);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const previousState = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    setEdits(previousState);
+    setSelectedEditId(null); // Clear selection to avoid issues
+  };
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Z / Cmd+Z for Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Delete key
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Only delete if not typing in an input (though we use prompts currently, so safe)
+        if (selectedEditId) deleteSelected();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoStack, edits, selectedEditId]);
+
+
+  // --- Helper Functions ---
+
+  const getCanvasCoords = (e: React.MouseEvent) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  };
+
+  const isOverHandle = (x: number, y: number, rect: {x: number, y: number, w: number, h: number}) => {
+    const handles = [
+      { id: 'nw', x: rect.x, y: rect.y },
+      { id: 'ne', x: rect.x + rect.w, y: rect.y },
+      { id: 'sw', x: rect.x, y: rect.y + rect.h },
+      { id: 'se', x: rect.x + rect.w, y: rect.y + rect.h }
+    ];
+    
+    // Check with a bit of padding/tolerance
+    const hitRadius = HANDLE_SIZE; // slightly larger for easier clicking
+    
+    return handles.find(h => 
+      x >= h.x - hitRadius && x <= h.x + hitRadius &&
+      y >= h.y - hitRadius && y <= h.y + hitRadius
+    )?.id as ResizeHandle | undefined;
+  };
+
+  const getElementRect = (op: PDFEditOperation) => {
+    // Default dimensions if missing (should be set on creation, but fallback here)
+    const w = op.w || 100;
+    const h = op.h || (op.type === 'text' ? (op.size || 18) * 1.5 : 50);
+    return { x: op.x, y: op.y, w, h };
+  };
+
+  // --- Actions ---
 
   const addWatermark = () => {
     const text = prompt("输入水印文本：", "CONFIDENTIAL");
     if (!text) return;
     
-    // Add a watermark to ALL pages
+    pushUndo();
     const newEdits: PDFEditOperation[] = [];
     for (let i = 1; i <= total; i++) {
-        // Center-ish estimation (will vary by page size, but simplified here)
         newEdits.push({
             id: Math.random().toString(36).substr(2, 9),
             type: 'text',
             page: i,
-            x: 200, // Roughly center
+            x: 200,
             y: 400,
+            w: text.length * 30, // Rough estimate
+            h: 60,
             content: text,
             size: 60,
-            color: { r: 0.9, g: 0.9, b: 0.9 } // Light gray
+            color: { r: 0.9, g: 0.9, b: 0.9 }
         });
     }
     setEdits([...edits, ...newEdits]);
-    alert("水印已添加到所有页面（保存后生效，预览中可能覆盖内容）。");
   };
 
   const addHeaderFooter = (type: 'header' | 'footer') => {
     const text = prompt(`输入${type === 'header' ? '页眉' : '页脚'}文本：`);
     if (!text) return;
     
+    pushUndo();
     const newEdits: PDFEditOperation[] = [];
     for (let i = 1; i <= total; i++) {
         newEdits.push({
@@ -127,7 +216,9 @@ const EditPDF: React.FC = () => {
             type: 'text',
             page: i,
             x: 50,
-            y: type === 'header' ? 20 : 800, // Top or Bottom approx
+            y: type === 'header' ? 20 : 800,
+            w: text.length * 6,
+            h: 12,
             content: text,
             size: 10,
             color: { r: 0.3, g: 0.3, b: 0.3 }
@@ -142,8 +233,10 @@ const EditPDF: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         if (ev.target?.result) {
+          pushUndo();
+          const id = Math.random().toString(36).substr(2, 9);
           setEdits([...edits, { 
-            id: Math.random().toString(36).substr(2, 9),
+            id,
             type: 'image', 
             page: currPage, 
             x: 100, 
@@ -153,6 +246,7 @@ const EditPDF: React.FC = () => {
             src: ev.target.result as string 
           }]);
           setActiveTool('cursor');
+          setSelectedEditId(id);
         }
       };
       reader.readAsDataURL(imgFile);
@@ -161,148 +255,256 @@ const EditPDF: React.FC = () => {
 
   // --- Mouse Interactions ---
 
-  const getCanvasCoords = (e: React.MouseEvent) => {
-    if (!canvasRef.current) return { x: 0, y: 0 };
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = canvasRef.current.width / rect.width;
-    const scaleY = canvasRef.current.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
-  };
-
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!file) return;
     const { x, y } = getCanvasCoords(e);
+    setDragStart({ x, y });
 
-    // Tools that require clicking once
+    // 1. Handle Tools that create new elements immediately
     if (activeTool === 'text') {
         const text = prompt("输入文本：");
         if (text) {
+            pushUndo();
+            const fontSize = 18;
+            // Approximate width/height for text box
+            const estW = text.length * fontSize * 0.6 + 20; 
+            const estH = fontSize * 1.5;
+            
+            const newId = Math.random().toString(36).substr(2, 9);
             setEdits([...edits, {
-                id: Math.random().toString(36).substr(2, 9),
+                id: newId,
                 type: 'text',
                 page: currPage,
                 x, y,
+                w: estW,
+                h: estH,
                 content: text,
-                size: 18,
+                size: fontSize,
                 color: { r: 0, g: 0, b: 0 }
             }]);
+            setSelectedEditId(newId);
         }
         setActiveTool('cursor');
         return;
     }
 
     if (activeTool === 'stamp') {
-        const stamps = ["已审核", "保密", "草稿", "紧急"];
-        // For simplicity, just cycling or prompting could work. Let's make a simple prompt or default.
-        // A real UI would have a dropdown. Let's assume "Approved" for now or prompt.
-        // Let's create a nice styled stamp.
+        pushUndo();
+        const newId = Math.random().toString(36).substr(2, 9);
         setEdits([...edits, {
-            id: Math.random().toString(36).substr(2, 9),
+            id: newId,
             type: 'stamp',
             page: currPage,
             x: x - 50, y: y - 20,
             w: 100, h: 40,
             content: "APPROVED",
-            color: { r: 0.8, g: 0, b: 0 } // Red
+            color: { r: 0.8, g: 0, b: 0 }
         }]);
         setActiveTool('cursor');
+        setSelectedEditId(newId);
         return;
     }
 
-    // Tools that require dragging
+    // 2. Handle Cursor Mode (Select, Move, Resize)
+    if (activeTool === 'cursor') {
+        // Capture state before move/resize starts
+        undoSnapshotRef.current = edits;
+        hasModifiedRef.current = false;
+
+        // A. Check if clicking on a resize handle of the CURRENTLY selected element
+        if (selectedEditId) {
+            const selectedEl = edits.find(e => e.id === selectedEditId);
+            if (selectedEl && selectedEl.page === currPage) {
+                const rect = getElementRect(selectedEl);
+                const handleId = isOverHandle(x, y, rect);
+                
+                if (handleId) {
+                    setInteractionMode('resizing');
+                    setActiveHandle(handleId);
+                    setElementStartSnapshot({ ...selectedEl });
+                    return; // Stop here, we are resizing
+                }
+            }
+        }
+
+        // B. Hit Test for selecting an element
+        // Find top-most element under cursor
+        const hit = [...edits].reverse().find(ed => {
+            if (ed.page !== currPage) return false;
+            const r = getElementRect(ed);
+            return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+        });
+
+        if (hit) {
+            setSelectedEditId(hit.id);
+            setInteractionMode('moving');
+            setElementStartSnapshot({ ...hit });
+        } else {
+            setSelectedEditId(null);
+            setInteractionMode('none');
+        }
+        return;
+    }
+
+    // 3. Handle Drawing Tools (Rect, Circle, etc.)
     if (['erase', 'shape-rect', 'shape-circle', 'shape-line', 'link', 'crop'].includes(activeTool)) {
-        setIsDragging(true);
-        setDragStart({ x, y });
+        setInteractionMode('drawing');
         setCurrentDragRect({ x, y, w: 0, h: 0 });
-    } else if (activeTool === 'cursor') {
-        // Simple selection logic (hit test)
-        // Find edit under cursor (reverse to find topmost)
-        const hit = [...edits].reverse().find(ed => 
-            ed.page === currPage && 
-            x >= ed.x && x <= ed.x + (ed.w || 100) && 
-            y >= ed.y && y <= ed.y + (ed.h || 20)
-        );
-        setSelectedEditId(hit ? hit.id : null);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !dragStart) return;
+    if (!dragStart) return;
     const { x, y } = getCanvasCoords(e);
     
-    setCurrentDragRect({
-        x: Math.min(x, dragStart.x),
-        y: Math.min(y, dragStart.y),
-        w: Math.abs(x - dragStart.x),
-        h: Math.abs(y - dragStart.y)
-    });
-  };
+    // Check if we need to push undo snapshot (first move)
+    if ((interactionMode === 'resizing' || interactionMode === 'moving') && !hasModifiedRef.current && undoSnapshotRef.current) {
+        setUndoStack(prev => [...prev, undoSnapshotRef.current!]);
+        hasModifiedRef.current = true;
+    }
 
-  const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isDragging || !dragStart || !currentDragRect) return;
-    setIsDragging(false);
-    const { w, h } = currentDragRect;
-    
-    // Ignore tiny drags
-    if (w < 5 || h < 5) {
-        setDragStart(null);
-        setCurrentDragRect(null);
+    // --- RESIZING ---
+    if (interactionMode === 'resizing' && selectedEditId && elementStartSnapshot && activeHandle) {
+        const snapshot = elementStartSnapshot as PDFEditOperation;
+        let newX = snapshot.x;
+        let newY = snapshot.y;
+        let newW = snapshot.w || 0;
+        let newH = snapshot.h || 0;
+        const dx = x - dragStart.x;
+        const dy = y - dragStart.y;
+
+        // Calculate new bounds based on handle
+        if (activeHandle.includes('e')) newW = (snapshot.w || 0) + dx;
+        if (activeHandle.includes('s')) newH = (snapshot.h || 0) + dy;
+        if (activeHandle.includes('w')) {
+            newX = snapshot.x + dx;
+            newW = (snapshot.w || 0) - dx;
+        }
+        if (activeHandle.includes('n')) {
+            newY = snapshot.y + dy;
+            newH = (snapshot.h || 0) - dy;
+        }
+
+        // Constraints
+        if (newW < MIN_SIZE) newW = MIN_SIZE;
+        if (newH < MIN_SIZE) newH = MIN_SIZE;
+
+        // Update State
+        const updatedEdits = edits.map(ed => {
+            if (ed.id === selectedEditId) {
+                const updated = { ...ed, x: newX, y: newY, w: newW, h: newH };
+                
+                // For text, scale size proportionally to height change
+                if (ed.type === 'text' && snapshot.h && snapshot.size) {
+                    const ratio = newH / snapshot.h;
+                    updated.size = snapshot.size * ratio;
+                }
+                
+                return updated;
+            }
+            return ed;
+        });
+        setEdits(updatedEdits);
         return;
     }
 
-    const { x, y } = getCanvasCoords(e); // End pos
-    const startX = dragStart.x;
-    const startY = dragStart.y;
-
-    const newOp: PDFEditOperation = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: activeTool as any,
-        page: currPage,
-        x: currentDragRect.x,
-        y: currentDragRect.y,
-        w: currentDragRect.w,
-        h: currentDragRect.h,
-    };
-
-    if (activeTool === 'shape-line') {
-        newOp.x = startX;
-        newOp.y = startY;
-        newOp.endX = x;
-        newOp.endY = y;
-        newOp.w = undefined; 
-        newOp.h = undefined;
+    // --- MOVING ---
+    if (interactionMode === 'moving' && selectedEditId && elementStartSnapshot) {
+        const dx = x - dragStart.x;
+        const dy = y - dragStart.y;
+        
+        const updatedEdits = edits.map(ed => {
+            if (ed.id === selectedEditId) {
+                let updated = { 
+                    ...ed, 
+                    x: (elementStartSnapshot.x || 0) + dx, 
+                    y: (elementStartSnapshot.y || 0) + dy 
+                };
+                
+                // Special handling for Line (needs to move endX/endY too)
+                if (ed.type === 'shape-line' && elementStartSnapshot.endX !== undefined && elementStartSnapshot.endY !== undefined) {
+                    updated.endX = elementStartSnapshot.endX + dx;
+                    updated.endY = elementStartSnapshot.endY + dy;
+                }
+                return updated;
+            }
+            return ed;
+        });
+        setEdits(updatedEdits);
+        return;
     }
 
-    if (activeTool === 'link') {
-        const url = prompt("输入链接 URL (例如 https://example.com):");
-        if (!url) {
-            setDragStart(null);
-            setCurrentDragRect(null);
-            return;
+    // --- DRAWING ---
+    if (interactionMode === 'drawing') {
+        setCurrentDragRect({
+            x: Math.min(x, dragStart.x),
+            y: Math.min(y, dragStart.y),
+            w: Math.abs(x - dragStart.x),
+            h: Math.abs(y - dragStart.y)
+        });
+    }
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    // Finish Drawing
+    if (interactionMode === 'drawing' && dragStart && currentDragRect) {
+        const { w, h } = currentDragRect;
+        if (w > 5 && h > 5) {
+             pushUndo(); // Save state before adding new shape
+             const { x, y } = getCanvasCoords(e);
+             const startX = dragStart.x;
+             const startY = dragStart.y;
+             
+             const newOp: PDFEditOperation = {
+                id: Math.random().toString(36).substr(2, 9),
+                type: activeTool as any,
+                page: currPage,
+                x: currentDragRect.x,
+                y: currentDragRect.y,
+                w: currentDragRect.w,
+                h: currentDragRect.h,
+            };
+
+            if (activeTool === 'shape-line') {
+                newOp.x = startX;
+                newOp.y = startY;
+                newOp.endX = x;
+                newOp.endY = y;
+                newOp.w = undefined; // Lines don't really use w/h in the same way for rendering
+                newOp.h = undefined;
+            }
+
+            if (activeTool === 'link') {
+                const url = prompt("输入链接 URL (例如 https://example.com):");
+                if (url) {
+                    newOp.url = url;
+                    // Only add if URL provided
+                    setEdits([...edits, newOp]);
+                }
+            } else if (activeTool === 'crop') {
+                 // Remove existing crop for this page
+                 const filtered = edits.filter(ed => !(ed.page === currPage && ed.type === 'crop'));
+                 setEdits([...filtered, newOp]);
+            } else {
+                setEdits([...edits, newOp]);
+            }
+            
+            // Switch back to cursor after one-time tools
+            if (['link', 'crop'].includes(activeTool)) setActiveTool('cursor');
         }
-        newOp.url = url;
     }
 
-    if (activeTool === 'crop') {
-        // Remove existing crop for this page if any
-        const filtered = edits.filter(ed => !(ed.page === currPage && ed.type === 'crop'));
-        setEdits([...filtered, newOp]);
-    } else {
-        setEdits([...edits, newOp]);
-    }
-
+    // Reset interactions
+    setInteractionMode('none');
     setDragStart(null);
+    setElementStartSnapshot(null);
     setCurrentDragRect(null);
-    // Keep tool active for multiple draws? Or switch to cursor?
-    // Usually switch to cursor for Crop/Link, keep for Shapes.
-    if (['link', 'crop'].includes(activeTool)) setActiveTool('cursor');
+    setActiveHandle(null);
   };
 
   const deleteSelected = () => {
       if (selectedEditId) {
+          pushUndo();
           setEdits(edits.filter(e => e.id !== selectedEditId));
           setSelectedEditId(null);
       }
@@ -333,29 +535,32 @@ const EditPDF: React.FC = () => {
         
         if (edit.type === 'text' && edit.content) {
              const pdfY = height - (edit.y * scaleY);
-             // Simple color mapping
+             // Adjust Y for PDF coordinate system (which is bottom-left based)
+             // The visual 'y' is the top of the box. 
+             // We draw text at 'y' but need to account for font height.
+             // Simple mapping: pdfY is top, we typically draw from baseline.
+             // edit.h is the box height.
+             
              const color = edit.color ? rgb(edit.color.r, edit.color.g, edit.color.b) : rgb(0,0,0);
-             // Handle rotation for watermark if needed, simplified here
              page.drawText(edit.content, { 
                  x: pdfX, 
-                 y: pdfY - (edit.size || 12), // Adjust for baseline roughly
+                 y: pdfY - (edit.size || 12), 
                  size: edit.size || 12, 
                  font, 
                  color,
-                 opacity: edit.y > 300 && edit.y < 500 && edit.size && edit.size > 50 ? 0.2 : 1 // Heuristic for watermark opacity
+                 opacity: edit.y > 300 && edit.y < 500 && edit.size && edit.size > 50 ? 0.2 : 1 
              });
         } 
         else if (edit.type === 'stamp' && edit.content) {
             const rectY = height - (edit.y * scaleY) - (edit.h! * scaleY);
             const w = edit.w! * scaleX;
             const h = edit.h! * scaleY;
-            // Draw border
+            
             page.drawRectangle({
                 x: pdfX, y: rectY, width: w, height: h,
                 borderColor: rgb(0.8, 0, 0), borderWidth: 2,
-                color: undefined, // Transparent fill
+                color: undefined, 
             });
-            // Draw Text centered
             page.drawText(edit.content, {
                 x: pdfX + 5, y: rectY + h/2 - 6,
                 size: 16, font, color: rgb(0.8, 0, 0)
@@ -377,7 +582,6 @@ const EditPDF: React.FC = () => {
            const h = edit.h! * scaleY;
            const centerX = pdfX + w/2;
            const centerY = height - (edit.y * scaleY) - h/2;
-           // Draw ellipse
            page.drawEllipse({
                x: centerX, y: centerY, xScale: w/2, yScale: h/2,
                borderColor: rgb(0, 0, 0), borderWidth: 2, color: undefined
@@ -395,8 +599,6 @@ const EditPDF: React.FC = () => {
         }
         else if (edit.type === 'link' && edit.url) {
             const rectY = height - (edit.y * scaleY) - (edit.h! * scaleY);
-            
-            // Create a link annotation manually as pdf-lib doesn't have a high-level helper for it on PDFPage
             const link = pdfDoc.context.register(
                 pdfDoc.context.obj({
                     Type: 'Annot',
@@ -410,20 +612,12 @@ const EditPDF: React.FC = () => {
                     },
                 })
             );
-
-            // Add annotation to the page's Annots array
             let annots = page.node.Annots();
             if (!annots) {
                 annots = pdfDoc.context.obj([]);
                 page.node.set(PDFName.of('Annots'), annots);
             }
             annots.push(link);
-
-            // Draw a blue highlight to indicate link area
-            page.drawRectangle({
-                 x: pdfX, y: rectY, width: edit.w! * scaleX, height: edit.h! * scaleY,
-                 color: rgb(0, 0, 1), opacity: 0.1
-            });
         }
         else if (edit.type === 'crop') {
              const rectY = height - (edit.y * scaleY) - (edit.h! * scaleY);
@@ -454,7 +648,11 @@ const EditPDF: React.FC = () => {
 
   const ToolButton = ({ tool, icon: Icon, label }: { tool: EditorTool, icon: any, label: string }) => (
       <button 
-        onClick={() => setActiveTool(tool)}
+        onClick={() => {
+            setActiveTool(tool);
+            // Deselect if switching tools away from cursor
+            if (tool !== 'cursor') setSelectedEditId(null);
+        }}
         className={`flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] transition-all ${
             activeTool === tool 
             ? 'bg-blue-100 text-blue-700 shadow-sm ring-1 ring-blue-200' 
@@ -486,13 +684,12 @@ const EditPDF: React.FC = () => {
         </div>
       )}
 
-      {/* --- Enhanced Toolbar --- */}
-      <div className="border-b border-slate-100 bg-white">
+      {/* --- Toolbar --- */}
+      <div className="border-b border-slate-100 bg-white z-10">
         <div className="flex items-center gap-2 p-2 overflow-x-auto no-scrollbar">
           
-          {/* Group 1: Basics */}
           <div className="flex gap-1 pr-3 border-r border-slate-100">
-             <ToolButton tool="cursor" icon={MousePointer2} label="选择" />
+             <ToolButton tool="cursor" icon={MousePointer2} label="选择/移动" />
              <ToolButton tool="text" icon={Type} label="插入文字" />
              <label className={`flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] transition-all cursor-pointer ${!file ? 'opacity-50 pointer-events-none' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
                 <ImageIcon size={20} className="mb-1" />
@@ -502,7 +699,6 @@ const EditPDF: React.FC = () => {
              <ToolButton tool="erase" icon={Eraser} label="擦除" />
           </div>
 
-          {/* Group 2: Shapes & Stamps */}
           <div className="flex gap-1 px-3 border-r border-slate-100">
              <ToolButton tool="shape-rect" icon={Square} label="矩形" />
              <ToolButton tool="shape-circle" icon={Circle} label="圆形" />
@@ -510,7 +706,6 @@ const EditPDF: React.FC = () => {
              <ToolButton tool="stamp" icon={Stamp} label="图章" />
           </div>
 
-          {/* Group 3: Page Tools */}
           <div className="flex gap-1 px-3 border-r border-slate-100">
              <ToolButton tool="crop" icon={Crop} label="裁剪页面" />
              <ToolButton tool="link" icon={LinkIcon} label="超链接" />
@@ -524,10 +719,17 @@ const EditPDF: React.FC = () => {
              </button>
           </div>
 
-          {/* Save Action */}
           <div className="ml-auto flex items-center gap-2 pl-2">
+            <button 
+                onClick={handleUndo} 
+                disabled={undoStack.length === 0}
+                className="text-slate-500 hover:bg-slate-100 disabled:opacity-30 p-2 rounded-full transition-colors" 
+                title="撤销 (Ctrl+Z)"
+            >
+                <Undo2 size={20} />
+            </button>
             {selectedEditId && (
-                <button onClick={deleteSelected} className="text-red-500 hover:bg-red-50 p-2 rounded-full" title="删除选中">
+                <button onClick={deleteSelected} className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors" title="删除选中元素">
                     <X size={20} />
                 </button>
             )}
@@ -556,66 +758,92 @@ const EditPDF: React.FC = () => {
             
             {/* Overlay Layer */}
             <div 
-              className={`absolute inset-0 ${activeTool === 'cursor' ? 'cursor-default' : 'cursor-crosshair'}`} 
+              className={`absolute inset-0 ${
+                activeTool !== 'cursor' ? 'cursor-crosshair' : 
+                interactionMode === 'moving' ? 'cursor-grabbing' : 
+                'cursor-default'
+              }`}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
             >
               {/* Existing Edits */}
-              {edits.filter(e => e.page === currPage).map((e) => (
-                <div 
-                    key={e.id} 
-                    style={{ 
-                        position: 'absolute', 
-                        left: e.x, top: e.y, 
-                        width: e.w, height: e.h,
-                        pointerEvents: 'none', // Allow clicking through to canvas for creation, simplified
-                        border: selectedEditId === e.id ? '2px solid #3b82f6' : 'none' 
-                    }}
-                >
-                  {e.type === 'text' && (
-                    <span className="font-bold whitespace-nowrap" style={{ fontSize: `${e.size}px`, color: `rgb(${e.color?.r! * 255}, ${e.color?.g! * 255}, ${e.color?.b! * 255})` }}>
-                        {e.content}
-                    </span>
-                  )}
-                  {e.type === 'erase' && (
-                    <div className="w-full h-full bg-white border border-slate-200 opacity-90"></div>
-                  )}
-                  {e.type === 'image' && (
-                    <img src={e.src} className="w-full h-full object-contain" alt="edit" />
-                  )}
-                  {e.type === 'shape-rect' && (
-                    <div className="w-full h-full border-2 border-black"></div>
-                  )}
-                  {e.type === 'shape-circle' && (
-                    <div className="w-full h-full border-2 border-black rounded-full"></div>
-                  )}
-                  {e.type === 'shape-line' && (
-                    <svg className="absolute overflow-visible top-0 left-0" style={{ pointerEvents: 'none' }}>
-                         <line x1={0} y1={0} x2={e.endX! - e.x} y2={e.endY! - e.y} stroke="black" strokeWidth="2" />
-                    </svg>
-                  )}
-                  {e.type === 'link' && (
-                    <div className="w-full h-full bg-blue-500 opacity-20 border border-blue-600 flex items-center justify-center">
-                        <LinkIcon size={16} className="text-blue-800" />
-                    </div>
-                  )}
-                  {e.type === 'crop' && (
-                    <div className="w-full h-full border-2 border-dashed border-slate-800 bg-black/10 flex items-center justify-center">
-                        <span className="bg-black text-white text-xs px-1">裁剪区域</span>
-                    </div>
-                  )}
-                  {e.type === 'stamp' && (
-                    <div className="w-full h-full border-4 border-red-600 text-red-600 font-black flex items-center justify-center tracking-widest opacity-80" style={{ transform: 'rotate(-10deg)' }}>
-                        {e.content}
-                    </div>
-                  )}
-                </div>
-              ))}
+              {edits.filter(e => e.page === currPage).map((e) => {
+                  const isSelected = selectedEditId === e.id;
+                  const rect = getElementRect(e);
+                  
+                  return (
+                    <div 
+                        key={e.id} 
+                        style={{ 
+                            position: 'absolute', 
+                            left: rect.x, top: rect.y, 
+                            width: rect.w, height: rect.h,
+                            pointerEvents: activeTool === 'cursor' ? 'auto' : 'none',
+                        }}
+                        className={`group ${isSelected ? 'z-10' : 'z-0'} ${activeTool === 'cursor' ? 'cursor-grab hover:outline hover:outline-1 hover:outline-blue-300' : ''}`}
+                    >
+                      {/* Selection Border & Resize Handles */}
+                      {isSelected && (
+                        <>
+                            <div className="absolute inset-0 border-2 border-blue-600 pointer-events-none" />
+                            {/* Resize Handles - Only for Rect-like objects (Not Line for simplicity for now) */}
+                            {e.type !== 'shape-line' && (
+                                <>
+                                    <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-600 cursor-nw-resize" />
+                                    <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-600 cursor-ne-resize" />
+                                    <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-600 cursor-sw-resize" />
+                                    <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-600 cursor-se-resize" />
+                                </>
+                            )}
+                        </>
+                      )}
 
-              {/* Drag Preview */}
-              {isDragging && currentDragRect && (
+                      {/* Content Rendering */}
+                      {e.type === 'text' && (
+                        <div className="w-full h-full overflow-hidden flex items-start leading-none" style={{ fontSize: `${e.size}px`, color: `rgb(${e.color?.r! * 255}, ${e.color?.g! * 255}, ${e.color?.b! * 255})` }}>
+                            {e.content}
+                        </div>
+                      )}
+                      {e.type === 'erase' && (
+                        <div className="w-full h-full bg-white border border-slate-200 opacity-90"></div>
+                      )}
+                      {e.type === 'image' && e.src && (
+                        <img src={e.src} className="w-full h-full object-fill select-none" alt="edit" draggable={false} />
+                      )}
+                      {e.type === 'shape-rect' && (
+                        <div className="w-full h-full border-2 border-black box-border"></div>
+                      )}
+                      {e.type === 'shape-circle' && (
+                        <div className="w-full h-full border-2 border-black rounded-full box-border"></div>
+                      )}
+                      {e.type === 'shape-line' && (
+                        <svg className="absolute overflow-visible top-0 left-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+                             <line x1={0} y1={0} x2={e.endX! - e.x} y2={e.endY! - e.y} stroke="black" strokeWidth="2" />
+                        </svg>
+                      )}
+                      {e.type === 'link' && (
+                        <div className="w-full h-full bg-blue-500 opacity-20 border border-blue-600 flex items-center justify-center">
+                            <LinkIcon size={16} className="text-blue-800" />
+                        </div>
+                      )}
+                      {e.type === 'crop' && (
+                        <div className="w-full h-full border-2 border-dashed border-slate-800 bg-black/10 flex items-center justify-center">
+                            <span className="bg-black text-white text-xs px-1">裁剪区域</span>
+                        </div>
+                      )}
+                      {e.type === 'stamp' && (
+                        <div className="w-full h-full border-4 border-red-600 text-red-600 font-black flex items-center justify-center tracking-widest opacity-80" style={{ transform: 'rotate(-10deg)' }}>
+                            {e.content}
+                        </div>
+                      )}
+                    </div>
+                  );
+              })}
+
+              {/* Drawing Preview */}
+              {interactionMode === 'drawing' && currentDragRect && (
                   <div 
                     className="absolute border-2 border-blue-500 bg-blue-100/20"
                     style={{
@@ -627,11 +855,6 @@ const EditPDF: React.FC = () => {
                     }}
                   >
                      {activeTool === 'shape-circle' && <div className="w-full h-full rounded-full border border-blue-500"></div>}
-                     {activeTool === 'shape-line' && dragStart && (
-                         <svg className="absolute inset-0 overflow-visible w-full h-full">
-                             {/* Line preview is tricky with div rect, simplified to rect for now or implement better SVG overlay */}
-                         </svg>
-                     )}
                   </div>
               )}
             </div>
@@ -639,11 +862,11 @@ const EditPDF: React.FC = () => {
         </div>
       )}
 
-      {/* --- Footer Pagination --- */}
+      {/* --- Footer --- */}
       {file && (
-        <div className="p-3 border-t border-slate-200 bg-white flex justify-between items-center">
+        <div className="p-3 border-t border-slate-200 bg-white flex justify-between items-center z-10">
           <div className="text-xs text-slate-400">
-             提示：选中元素后按 Delete 键或点击上方删除按钮可移除。
+             提示：选中元素后按 Delete 键或点击上方删除按钮可移除。拖拽四角可缩放。Ctrl+Z 撤销。
           </div>
           <div className="flex items-center gap-4">
             <button 
@@ -662,7 +885,7 @@ const EditPDF: React.FC = () => {
                 <ChevronRight size={20}/>
             </button>
           </div>
-          <div className="w-[100px]"></div> {/* Spacer for balance */}
+          <div className="w-[100px]"></div>
         </div>
       )}
     </div>

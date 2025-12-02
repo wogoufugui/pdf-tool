@@ -60,7 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen = fals
       `}>
         <div className="flex items-center justify-between mb-8 px-2">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg text-white">
+            <div className="bg-blue-600 p-2 rounded-lg text-white shadow-md shadow-blue-200">
               <Layers size={24} />
             </div>
             <div>
@@ -84,17 +84,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen = fals
           <NavItem id={ToolType.MERGE} label="合并 PDF" icon={<Files size={20} />} isActive={activeTab === ToolType.MERGE} onClick={handleNavClick} />
           <NavItem id={ToolType.SPLIT} label="拆分 PDF" icon={<Scissors size={20} />} isActive={activeTab === ToolType.SPLIT} onClick={handleNavClick} />
           
-          <p className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-6">工具箱</p>
+          <p className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-6">智能工具箱</p>
           <NavItem id={ToolType.IMG_TO_PDF} label="图片转 PDF" icon={<ImageIcon size={20} />} isActive={activeTab === ToolType.IMG_TO_PDF} onClick={handleNavClick} />
           <NavItem id={ToolType.CONVERT} label="格式转换" icon={<RefreshCw size={20} />} isActive={activeTab === ToolType.CONVERT} onClick={handleNavClick} />
         </nav>
-
-        <div className="mt-8 p-4 bg-slate-50 rounded-xl border border-slate-100">
-          <p className="text-xs text-slate-500 text-center leading-relaxed">
-            由 Gemini AI 2.5 驱动<br/>
-            安全且客户端处理
-          </p>
-        </div>
       </div>
     </>
   );

@@ -47,12 +47,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <p className="text-blue-100 text-lg mb-8 leading-relaxed">
             基于浏览器本地处理，安全高效。集成 Gemini AI 技术，为您提供智能的文档处理体验。无需上传文件到服务器。
           </p>
-          <button 
-            onClick={() => onNavigate(ToolType.EDIT)}
-            className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg inline-flex items-center gap-2"
-          >
-            立即开始编辑 <ArrowRight size={18} />
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => onNavigate(ToolType.EDIT)}
+              className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg inline-flex items-center gap-2"
+            >
+              立即开始编辑 <ArrowRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
