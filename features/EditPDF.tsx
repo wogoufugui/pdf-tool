@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
 import { PDFEditOperation } from '../types';
+import { useLanguage } from '../components/LanguageContext';
 
 type EditorTool = 'cursor' | 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'link' | 'crop' | 'stamp';
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
@@ -25,6 +26,7 @@ const EditPDF: React.FC = () => {
   const [edits, setEdits] = useState<PDFEditOperation[]>([]);
   const [processing, setProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const { t } = useLanguage();
   
   // Undo Stack
   const [undoStack, setUndoStack] = useState<PDFEditOperation[][]>([]);
@@ -59,7 +61,7 @@ const EditPDF: React.FC = () => {
       setTotal(doc.getPageCount());
       setCurrPage(1);
     } catch (e) {
-      alert("加载 PDF 失败。");
+      alert(t('alert_load_fail'));
     }
   };
 
@@ -81,7 +83,7 @@ const EditPDF: React.FC = () => {
       if (droppedFile.type === 'application/pdf' || droppedFile.name.toLowerCase().endsWith('.pdf')) {
         handleFile([droppedFile]);
       } else {
-        alert("请上传 PDF 文件");
+        alert(t('alert_only_pdf'));
       }
     }
   };
@@ -182,7 +184,7 @@ const EditPDF: React.FC = () => {
   // --- Actions ---
 
   const addWatermark = () => {
-    const text = prompt("输入水印文本：", "CONFIDENTIAL");
+    const text = prompt(t('prompt_watermark'), "CONFIDENTIAL");
     if (!text) return;
     
     pushUndo();
@@ -205,7 +207,7 @@ const EditPDF: React.FC = () => {
   };
 
   const addHeaderFooter = (type: 'header' | 'footer') => {
-    const text = prompt(`输入${type === 'header' ? '页眉' : '页脚'}文本：`);
+    const text = prompt(type === 'header' ? t('prompt_header') : t('prompt_footer'));
     if (!text) return;
     
     pushUndo();
@@ -262,7 +264,7 @@ const EditPDF: React.FC = () => {
 
     // 1. Handle Tools that create new elements immediately
     if (activeTool === 'text') {
-        const text = prompt("输入文本：");
+        const text = prompt(t('prompt_text'));
         if (text) {
             pushUndo();
             const fontSize = 18;
@@ -475,7 +477,7 @@ const EditPDF: React.FC = () => {
             }
 
             if (activeTool === 'link') {
-                const url = prompt("输入链接 URL (例如 https://example.com):");
+                const url = prompt(t('prompt_link'));
                 if (url) {
                     newOp.url = url;
                     // Only add if URL provided
@@ -640,7 +642,7 @@ const EditPDF: React.FC = () => {
       saveAs(new Blob([pdfBytes], { type: 'application/pdf' }), 'edited_document.pdf');
     } catch (e) {
       console.error(e);
-      alert("保存 PDF 失败。");
+      alert(t('alert_save_fail'));
     } finally {
       setProcessing(false);
     }
@@ -678,7 +680,7 @@ const EditPDF: React.FC = () => {
           <div className="bg-white p-8 rounded-2xl shadow-2xl border-4 border-blue-500 border-dashed animate-in fade-in zoom-in duration-300">
             <div className="flex flex-col items-center gap-4 text-blue-600">
               <UploadCloud size={64} />
-              <h3 className="text-2xl font-bold">松开以打开 PDF</h3>
+              <h3 className="text-2xl font-bold">{t('edit_drag_overlay')}</h3>
             </div>
           </div>
         </div>
@@ -689,33 +691,33 @@ const EditPDF: React.FC = () => {
         <div className="flex items-center gap-2 p-2 overflow-x-auto no-scrollbar">
           
           <div className="flex gap-1 pr-3 border-r border-slate-100">
-             <ToolButton tool="cursor" icon={MousePointer2} label="选择/移动" />
-             <ToolButton tool="text" icon={Type} label="插入文字" />
+             <ToolButton tool="cursor" icon={MousePointer2} label={t('edit_tool_cursor')} />
+             <ToolButton tool="text" icon={Type} label={t('edit_tool_text')} />
              <label className={`flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] transition-all cursor-pointer ${!file ? 'opacity-50 pointer-events-none' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
                 <ImageIcon size={20} className="mb-1" />
-                <span className="text-[10px] font-medium leading-tight">插入图片</span>
+                <span className="text-[10px] font-medium leading-tight">{t('edit_tool_image')}</span>
                 <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={!file} />
              </label>
-             <ToolButton tool="erase" icon={Eraser} label="擦除" />
+             <ToolButton tool="erase" icon={Eraser} label={t('edit_tool_erase')} />
           </div>
 
           <div className="flex gap-1 px-3 border-r border-slate-100">
-             <ToolButton tool="shape-rect" icon={Square} label="矩形" />
-             <ToolButton tool="shape-circle" icon={Circle} label="圆形" />
-             <ToolButton tool="shape-line" icon={Minus} label="线条" />
-             <ToolButton tool="stamp" icon={Stamp} label="图章" />
+             <ToolButton tool="shape-rect" icon={Square} label={t('edit_tool_rect')} />
+             <ToolButton tool="shape-circle" icon={Circle} label={t('edit_tool_circle')} />
+             <ToolButton tool="shape-line" icon={Minus} label={t('edit_tool_line')} />
+             <ToolButton tool="stamp" icon={Stamp} label={t('edit_tool_stamp')} />
           </div>
 
           <div className="flex gap-1 px-3 border-r border-slate-100">
-             <ToolButton tool="crop" icon={Crop} label="裁剪页面" />
-             <ToolButton tool="link" icon={LinkIcon} label="超链接" />
+             <ToolButton tool="crop" icon={Crop} label={t('edit_tool_crop')} />
+             <ToolButton tool="link" icon={LinkIcon} label={t('edit_tool_link')} />
              <button onClick={() => addWatermark()} disabled={!file} className="flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] text-slate-500 hover:bg-slate-100">
                  <FileBadge size={20} className="mb-1" />
-                 <span className="text-[10px] font-medium leading-tight">水印</span>
+                 <span className="text-[10px] font-medium leading-tight">{t('edit_watermark')}</span>
              </button>
              <button onClick={() => addHeaderFooter('header')} disabled={!file} className="flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] text-slate-500 hover:bg-slate-100">
                  <AppWindow size={20} className="mb-1" />
-                 <span className="text-[10px] font-medium leading-tight">页眉页脚</span>
+                 <span className="text-[10px] font-medium leading-tight">{t('edit_header_footer')}</span>
              </button>
           </div>
 
@@ -724,12 +726,12 @@ const EditPDF: React.FC = () => {
                 onClick={handleUndo} 
                 disabled={undoStack.length === 0}
                 className="text-slate-500 hover:bg-slate-100 disabled:opacity-30 p-2 rounded-full transition-colors" 
-                title="撤销 (Ctrl+Z)"
+                title={t('edit_undo_tooltip')}
             >
                 <Undo2 size={20} />
             </button>
             {selectedEditId && (
-                <button onClick={deleteSelected} className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors" title="删除选中元素">
+                <button onClick={deleteSelected} className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors" title={t('edit_delete_tooltip')}>
                     <X size={20} />
                 </button>
             )}
@@ -738,7 +740,7 @@ const EditPDF: React.FC = () => {
                 disabled={!file || processing} 
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
             >
-                {processing ? '处理中...' : '导出 PDF'} <Download size={16}/>
+                {processing ? t('edit_processing') : t('edit_export_btn')} <Download size={16}/>
             </button>
           </div>
         </div>
@@ -748,7 +750,7 @@ const EditPDF: React.FC = () => {
       {!file ? (
         <div className="flex-1 p-10 flex flex-col justify-center items-center bg-slate-50">
            <div className="max-w-xl w-full">
-            <FileUploader onFilesSelected={handleFile} accept=".pdf" label="打开要编辑的 PDF" />
+            <FileUploader onFilesSelected={handleFile} accept=".pdf" label={t('edit_open_pdf')} />
            </div>
         </div>
       ) : (
@@ -830,7 +832,7 @@ const EditPDF: React.FC = () => {
                       )}
                       {e.type === 'crop' && (
                         <div className="w-full h-full border-2 border-dashed border-slate-800 bg-black/10 flex items-center justify-center">
-                            <span className="bg-black text-white text-xs px-1">裁剪区域</span>
+                            <span className="bg-black text-white text-xs px-1">{t('crop_area')}</span>
                         </div>
                       )}
                       {e.type === 'stamp' && (
@@ -866,7 +868,7 @@ const EditPDF: React.FC = () => {
       {file && (
         <div className="p-3 border-t border-slate-200 bg-white flex justify-between items-center z-10">
           <div className="text-xs text-slate-400">
-             提示：选中元素后按 Delete 键或点击上方删除按钮可移除。拖拽四角可缩放。Ctrl+Z 撤销。
+             {t('edit_hint')}
           </div>
           <div className="flex items-center gap-4">
             <button 
@@ -876,7 +878,7 @@ const EditPDF: React.FC = () => {
             >
                 <ChevronLeft size={20}/>
             </button>
-            <span className="font-medium text-slate-700 tabular-nums text-sm"> {currPage} / {total} </span>
+            <span className="font-medium text-slate-700 tabular-nums text-sm"> {t('page_counter', { curr: currPage, total: total })} </span>
             <button 
                 onClick={() => setCurrPage(Math.min(total, currPage + 1))} 
                 disabled={currPage === total}

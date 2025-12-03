@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud } from 'lucide-react';
+import { useLanguage } from './LanguageContext';
 
 interface FileUploaderProps {
   onFilesSelected: (files: File[]) => void;
@@ -12,10 +13,11 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   onFilesSelected, 
   accept, 
   multiple = false, 
-  label = "点击或拖拽文件到此处" 
+  label 
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -76,10 +78,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         <UploadCloud size={32} />
       </div>
       <p className={`font-medium text-lg ${isDragging ? 'text-blue-600' : 'text-slate-600'}`}>
-        {isDragging ? "松开鼠标上传" : label}
+        {isDragging ? t('upload_release') : (label || t('upload_click_drag'))}
       </p>
       <p className="text-slate-400 text-sm mt-1">
-        支持格式：{accept.replace(/\./g, ' ').toUpperCase()}
+        {t('upload_formats')}：{accept.replace(/\./g, ' ').toUpperCase()}
       </p>
     </div>
   );

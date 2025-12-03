@@ -3,10 +3,12 @@ import { PDFDocument } from 'pdf-lib';
 import saveAs from 'file-saver';
 import { ArrowUp, ArrowDown, X, Loader2 } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
+import { useLanguage } from '../components/LanguageContext';
 
 const MergePDF: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
+  const { t } = useLanguage();
 
   const handleFiles = (newFiles: File[]) => {
     setFiles((prev) => [...prev, ...newFiles]);
@@ -40,7 +42,7 @@ const MergePDF: React.FC = () => {
       saveAs(new Blob([pdfBytes], { type: 'application/pdf' }), 'merged_document.pdf');
     } catch (e) {
       console.error(e);
-      alert("合并 PDF 失败。请确保所有文件都是有效的 PDF。");
+      alert(t('alert_merge_fail'));
     } finally {
       setProcessing(false);
     }
@@ -49,16 +51,16 @@ const MergePDF: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800">合并 PDF 文件</h2>
-        <p className="text-slate-500 mt-2">几秒钟内将多个 PDF 文件合并为一个文档。</p>
+        <h2 className="text-3xl font-bold text-slate-800">{t('merge_title')}</h2>
+        <p className="text-slate-500 mt-2">{t('merge_desc')}</p>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <FileUploader onFilesSelected={handleFiles} accept=".pdf" multiple={true} label="拖放 PDF 到此处进行合并" />
+        <FileUploader onFilesSelected={handleFiles} accept=".pdf" multiple={true} label={t('merge_upload_label')} />
         
         {files.length > 0 && (
           <div className="mt-6 space-y-3">
-            <h3 className="font-semibold text-slate-700">已选文件 ({files.length})</h3>
+            <h3 className="font-semibold text-slate-700">{t('merge_selected_files')} ({files.length})</h3>
             <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2">
               {files.map((f, i) => (
                 <div key={`${f.name}-${i}`} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100 group hover:border-blue-200 transition-colors">
@@ -82,7 +84,7 @@ const MergePDF: React.FC = () => {
         className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all flex justify-center items-center gap-2"
       >
         {processing ? <Loader2 className="animate-spin" /> : null}
-        {processing ? '正在合并...' : '立即合并 PDF'}
+        {processing ? t('merge_btn_processing') : t('merge_btn')}
       </button>
     </div>
   );

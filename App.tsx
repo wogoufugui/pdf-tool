@@ -8,10 +8,12 @@ import ConvertPDF from './features/ConvertPDF';
 import EditPDF from './features/EditPDF';
 import Dashboard from './features/Dashboard';
 import { ToolType } from './types';
+import { LanguageProvider, useLanguage } from './components/LanguageContext';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ToolType>(ToolType.HOME);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { t } = useLanguage();
 
   const renderContent = () => {
     switch (activeTab) {
@@ -36,7 +38,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row max-w-7xl mx-auto md:p-4 gap-6">
       {/* Mobile Header */}
       <div className="md:hidden bg-white p-4 flex justify-between items-center shadow-sm sticky top-0 z-30">
-        <h1 className="font-bold text-xl text-slate-800">PDF 大师</h1>
+        <h1 className="font-bold text-xl text-slate-800">{t('app_name')}</h1>
         <button 
           onClick={() => setMobileMenuOpen(true)}
           className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
@@ -58,5 +60,11 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const App: React.FC = () => (
+  <LanguageProvider>
+    <AppContent />
+  </LanguageProvider>
+);
 
 export default App;

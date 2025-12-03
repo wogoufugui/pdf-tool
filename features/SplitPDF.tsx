@@ -3,6 +3,7 @@ import { PDFDocument } from 'pdf-lib';
 import saveAs from 'file-saver';
 import { FileText, Loader2, CheckCircle2, UploadCloud } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
+import { useLanguage } from '../components/LanguageContext';
 
 const SplitPDF: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -11,6 +12,7 @@ const SplitPDF: React.FC = () => {
   const [mode, setMode] = useState<'split' | 'extract'>('split');
   const [rangeStr, setRangeStr] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const { t } = useLanguage();
 
   const handleFile = async (files: File[]) => {
     const f = files[0];
@@ -21,7 +23,7 @@ const SplitPDF: React.FC = () => {
       const doc = await PDFDocument.load(arrayBuffer);
       setPageCount(doc.getPageCount());
     } catch (e) {
-      alert("读取 PDF 文件失败。");
+      alert(t('alert_load_fail'));
       setFile(null);
     }
   };
@@ -44,7 +46,7 @@ const SplitPDF: React.FC = () => {
       if (droppedFile.type === 'application/pdf' || droppedFile.name.toLowerCase().endsWith('.pdf')) {
         handleFile([droppedFile]);
       } else {
-        alert("请上传 PDF 文件");
+        alert(t('alert_only_pdf'));
       }
     }
   };
@@ -96,7 +98,7 @@ const SplitPDF: React.FC = () => {
       }
     } catch (e) {
       console.error(e);
-      alert("操作失败。");
+      alert(t('alert_split_fail'));
     } finally {
       setProcessing(false);
     }
@@ -114,20 +116,20 @@ const SplitPDF: React.FC = () => {
           <div className="bg-white p-8 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300">
             <div className="flex flex-col items-center gap-4 text-blue-600">
               <UploadCloud size={64} />
-              <h3 className="text-2xl font-bold">松开以打开 PDF</h3>
+              <h3 className="text-2xl font-bold">{t('edit_drag_overlay')}</h3>
             </div>
           </div>
         </div>
       )}
 
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800">拆分或提取页面</h2>
-        <p className="text-slate-500 mt-2">将 PDF 拆分为多个文件或提取特定页面。</p>
+        <h2 className="text-3xl font-bold text-slate-800">{t('split_title')}</h2>
+        <p className="text-slate-500 mt-2">{t('split_desc')}</p>
       </div>
 
       {!file ? (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <FileUploader onFilesSelected={handleFile} accept=".pdf" label="上传要拆分的 PDF" />
+            <FileUploader onFilesSelected={handleFile} accept=".pdf" label={t('split_upload_label')} />
         </div>
       ) : (
         <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-2xl mx-auto">
@@ -137,9 +139,9 @@ const SplitPDF: React.FC = () => {
             </div>
             <div>
                 <h3 className="font-bold text-lg text-slate-800">{file.name}</h3>
-                <p className="text-slate-500 text-sm">共 {pageCount} 页</p>
+                <p className="text-slate-500 text-sm">{t('total_pages', { count: pageCount })}</p>
             </div>
-            <button onClick={() => setFile(null)} className="ml-auto text-sm text-blue-600 hover:underline">更换文件</button>
+            <button onClick={() => setFile(null)} className="ml-auto text-sm text-blue-600 hover:underline">{t('split_change_file')}</button>
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-6">
@@ -149,8 +151,8 @@ const SplitPDF: React.FC = () => {
               }`}
               onClick={() => setMode('split')}
             >
-              <div className="font-semibold mb-1">拆分为文件</div>
-              <div className="text-xs opacity-70">将范围保存为单独的 PDF</div>
+              <div className="font-semibold mb-1">{t('split_mode_split')}</div>
+              <div className="text-xs opacity-70">{t('split_mode_split_desc')}</div>
             </button>
             <button
               className={`p-4 rounded-xl border-2 text-center transition-all ${
@@ -158,21 +160,21 @@ const SplitPDF: React.FC = () => {
               }`}
               onClick={() => setMode('extract')}
             >
-              <div className="font-semibold mb-1">提取为单个文件</div>
-              <div className="text-xs opacity-70">将范围合并为一个 PDF</div>
+              <div className="font-semibold mb-1">{t('split_mode_extract')}</div>
+              <div className="text-xs opacity-70">{t('split_mode_extract_desc')}</div>
             </button>
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-2">页面范围</label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">{t('split_range_label')}</label>
             <input
               type="text"
               className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              placeholder="例如： 1-3, 5, 8-10"
+              placeholder={t('split_range_placeholder')}
               value={rangeStr}
               onChange={(e) => setRangeStr(e.target.value)}
             />
-            <p className="text-xs text-slate-400 mt-2">使用逗号分隔多个范围。例如：“1, 3-5”表示第1页和第3到5页。</p>
+            <p className="text-xs text-slate-400 mt-2">{t('split_range_help')}</p>
           </div>
 
           <button
@@ -181,7 +183,7 @@ const SplitPDF: React.FC = () => {
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all flex justify-center items-center gap-2"
           >
             {processing ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={20}/>}
-            {processing ? '处理中...' : '下载 PDF'}
+            {processing ? t('split_processing') : t('split_btn')}
           </button>
         </div>
       )}

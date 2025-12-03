@@ -4,12 +4,14 @@ import saveAs from 'file-saver';
 import { FileType, Loader2, Wand2, UploadCloud } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
 import { convertToTable } from '../services/geminiService';
+import { useLanguage } from '../components/LanguageContext';
 
 const ConvertPDF: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [target, setTarget] = useState<'word' | 'excel' | 'txt'>('word');
   const [processing, setProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const { t } = useLanguage();
 
   const handleFile = (f: File) => {
     setFile(f);
@@ -33,7 +35,7 @@ const ConvertPDF: React.FC = () => {
       if (droppedFile.type === 'application/pdf' || droppedFile.name.toLowerCase().endsWith('.pdf')) {
         handleFile(droppedFile);
       } else {
-        alert("请上传 PDF 文件");
+        alert(t('alert_only_pdf'));
       }
     }
   };
@@ -70,7 +72,7 @@ const ConvertPDF: React.FC = () => {
       }
     } catch (e) {
       console.error(e);
-      alert("转换失败。");
+      alert(t('alert_convert_fail'));
     } finally {
       setProcessing(false);
     }
@@ -88,20 +90,20 @@ const ConvertPDF: React.FC = () => {
           <div className="bg-white p-8 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300">
             <div className="flex flex-col items-center gap-4 text-blue-600">
               <UploadCloud size={64} />
-              <h3 className="text-2xl font-bold">松开以打开 PDF</h3>
+              <h3 className="text-2xl font-bold">{t('edit_drag_overlay')}</h3>
             </div>
           </div>
         </div>
       )}
 
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800">转换 PDF</h2>
-        <p className="text-slate-500 mt-2">从 PDF 中提取文本和数据为可编辑格式。</p>
+        <h2 className="text-3xl font-bold text-slate-800">{t('convert_title')}</h2>
+        <p className="text-slate-500 mt-2">{t('convert_desc')}</p>
       </div>
 
       {!file ? (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-           <FileUploader onFilesSelected={(fs) => handleFile(fs[0])} accept=".pdf" label="上传要转换的 PDF" />
+           <FileUploader onFilesSelected={(fs) => handleFile(fs[0])} accept=".pdf" label={t('convert_upload_label')} />
         </div>
       ) : (
         <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-2xl mx-auto text-center">
@@ -127,7 +129,7 @@ const ConvertPDF: React.FC = () => {
           </div>
 
           <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-sm mb-6 text-left">
-            <span className="font-bold">注意：</span> Excel 转换使用 AI 检测表格。结果可能因 PDF 复杂度而异。
+            <span className="font-bold">{t('convert_note')}</span> {t('convert_note_text')}
           </div>
 
           <button
@@ -136,11 +138,11 @@ const ConvertPDF: React.FC = () => {
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all flex justify-center items-center gap-2"
           >
             {processing ? <Loader2 className="animate-spin" /> : <Wand2 size={20}/>}
-            {processing ? '分析与转换中...' : '开始转换'}
+            {processing ? t('convert_processing') : t('btn_start_convert')}
           </button>
           
           <button onClick={() => setFile(null)} className="mt-4 text-sm text-slate-400 hover:text-slate-600 underline">
-              选择其他文件
+              {t('select_other_file')}
           </button>
         </div>
       )}

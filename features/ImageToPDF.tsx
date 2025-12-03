@@ -3,10 +3,12 @@ import { PDFDocument } from 'pdf-lib';
 import saveAs from 'file-saver';
 import { X, Loader2, Image as ImageIcon } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
+import { useLanguage } from '../components/LanguageContext';
 
 const ImageToPDF: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
+  const { t } = useLanguage();
 
   const convert = async () => {
     if (!files.length) return;
@@ -37,7 +39,7 @@ const ImageToPDF: React.FC = () => {
       saveAs(new Blob([pdfBytes], { type: 'application/pdf' }), 'images_combined.pdf');
     } catch (e) {
       console.error(e);
-      alert("转换失败。请检查您的图片文件。");
+      alert(t('alert_img2pdf_fail'));
     } finally {
       setProcessing(false);
     }
@@ -50,8 +52,8 @@ const ImageToPDF: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800">图片转 PDF</h2>
-        <p className="text-slate-500 mt-2">将 JPG 和 PNG 图片转换为高质量的 PDF 文档。</p>
+        <h2 className="text-3xl font-bold text-slate-800">{t('img2pdf_title')}</h2>
+        <p className="text-slate-500 mt-2">{t('img2pdf_desc')}</p>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -59,12 +61,12 @@ const ImageToPDF: React.FC = () => {
           onFilesSelected={(fs) => setFiles([...files, ...fs])}
           accept="image/png, image/jpeg"
           multiple={true}
-          label="拖放图片 (JPG, PNG) 到此处"
+          label={t('img2pdf_upload_label')}
         />
 
         {files.length > 0 && (
           <div className="mt-8">
-            <h3 className="font-semibold text-slate-700 mb-4">预览 ({files.length})</h3>
+            <h3 className="font-semibold text-slate-700 mb-4">{t('img2pdf_preview')} ({files.length})</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {files.map((f, i) => (
                 <div key={i} className="group relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
@@ -97,7 +99,7 @@ const ImageToPDF: React.FC = () => {
         className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all flex justify-center items-center gap-2"
       >
         {processing ? <Loader2 className="animate-spin" /> : <ImageIcon size={20}/>}
-        {processing ? '转换中...' : '转换为 PDF'}
+        {processing ? t('img2pdf_processing') : t('img2pdf_btn')}
       </button>
     </div>
   );
