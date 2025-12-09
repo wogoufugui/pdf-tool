@@ -110,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* Features Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
         <div className="flex flex-col items-center text-center p-4">
           <div className="bg-slate-100 p-3 rounded-full text-slate-600 mb-3">
             <ShieldCheck size={24} />
@@ -124,13 +124,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
           <h4 className="font-bold text-slate-800 mb-1">{t('feature_speed')}</h4>
           <p className="text-sm text-slate-500">{t('feature_speed_desc')}</p>
-        </div>
-        <div className="flex flex-col items-center text-center p-4">
-           <div className="bg-slate-100 p-3 rounded-full text-slate-600 mb-3">
-            <Edit3 size={24} />
-          </div>
-          <h4 className="font-bold text-slate-800 mb-1">{t('feature_ai')}</h4>
-          <p className="text-sm text-slate-500">{t('feature_ai_desc')}</p>
         </div>
       </div>
     </div>
