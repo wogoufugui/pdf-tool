@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, Home, X, Globe, ImagePlus } from 'lucide-react';
+import { Layers, Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, Home, X, Globe, ImagePlus, Eraser } from 'lucide-react';
 import { ToolType, NavItemProps } from '../types';
 import { useLanguage, languages, Language } from './LanguageContext';
 
@@ -84,6 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen = fals
           
           <p className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-6">{t('nav_edit_organize')}</p>
           <NavItem id={ToolType.EDIT} label={t('edit_pdf')} icon={<Edit3 size={20} />} isActive={activeTab === ToolType.EDIT} onClick={handleNavClick} />
+          <NavItem id={ToolType.REMOVE_WATERMARK} label={t('remove_watermark')} icon={<Eraser size={20} />} isActive={activeTab === ToolType.REMOVE_WATERMARK} onClick={handleNavClick} />
           <NavItem id={ToolType.MERGE} label={t('merge_pdf')} icon={<Files size={20} />} isActive={activeTab === ToolType.MERGE} onClick={handleNavClick} />
           <NavItem id={ToolType.SPLIT} label={t('split_pdf')} icon={<Scissors size={20} />} isActive={activeTab === ToolType.SPLIT} onClick={handleNavClick} />
           

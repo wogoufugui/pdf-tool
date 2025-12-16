@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, ArrowRight, ShieldCheck, Zap, ImagePlus } from 'lucide-react';
+import { Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, ArrowRight, ShieldCheck, Zap, ImagePlus, Eraser } from 'lucide-react';
 import { ToolType } from '../types';
 import { useLanguage } from '../components/LanguageContext';
 
@@ -72,6 +72,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             icon={<Edit3 size={24} className="text-blue-600" />}
             color="bg-blue-50"
             onClick={() => onNavigate(ToolType.EDIT)}
+            startText={t('start_using')}
+          />
+          <ToolCard 
+            title={t('remove_watermark')}
+            desc={t('tool_desc_remove_watermark')}
+            icon={<Eraser size={24} className="text-red-500" />}
+            color="bg-red-50"
+            onClick={() => onNavigate(ToolType.REMOVE_WATERMARK)}
             startText={t('start_using')}
           />
           <ToolCard 

@@ -7,6 +7,7 @@ import ImageToPDF from './features/ImageToPDF';
 import ConvertPDF from './features/ConvertPDF';
 import EditPDF from './features/EditPDF';
 import ExtractImages from './features/ExtractImages';
+import RemoveWatermark from './features/RemoveWatermark';
 import Dashboard from './features/Dashboard';
 import { ToolType } from './types';
 import { LanguageProvider, useLanguage } from './components/LanguageContext';
@@ -32,6 +33,8 @@ const AppContent: React.FC = () => {
         return <EditPDF />;
       case ToolType.EXTRACT_IMAGES:
         return <ExtractImages />;
+      case ToolType.REMOVE_WATERMARK:
+        return <RemoveWatermark />;
       default:
         return <Dashboard onNavigate={setActiveTab} />;
     }

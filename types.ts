@@ -8,6 +8,7 @@ export enum ToolType {
   IMG_TO_PDF = 'img2pdf',
   EXTRACT_IMAGES = 'extract_images',
   CONVERT = 'convert',
+  REMOVE_WATERMARK = 'remove_watermark',
 }
 
 export interface NavItemProps {
@@ -20,7 +21,7 @@ export interface NavItemProps {
 
 export interface PDFEditOperation {
   id: string; // Unique ID for deletion/selection
-  type: 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'crop' | 'stamp';
+  type: 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'stamp';
   page: number;
   x: number;
   y: number;

@@ -4,14 +4,14 @@ import * as pdfjsLib from 'pdfjs-dist';
 import saveAs from 'file-saver';
 import { 
   Type, Image as ImageIcon, Eraser, Download, ChevronLeft, ChevronRight, 
-  MousePointer2, Square, Circle, Minus, Crop, 
+  MousePointer2, Square, Circle, Minus, 
   Stamp, FileBadge, X, UploadCloud, Undo2, Check
 } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
 import { PDFEditOperation } from '../types';
 import { useLanguage } from '../components/LanguageContext';
 
-type EditorTool = 'cursor' | 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'crop' | 'stamp';
+type EditorTool = 'cursor' | 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'stamp';
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 
 const HANDLE_SIZE = 10;
@@ -48,7 +48,7 @@ const EditPDF: React.FC = () => {
   const [wmSettings, setWmSettings] = useState({
     text: 'CONFIDENTIAL',
     opacity: 0.3,
-    rotation: 45,
+    rotation: -45, // Default visual rotation
     size: 40,
     color: '#808080',
     layout: 'tile' as 'center' | 'tile'
@@ -138,7 +138,6 @@ const EditPDF: React.FC = () => {
     renderPage();
   }, [file, currPage]);
 
-  // Focus text input when it appears
   useEffect(() => {
     if (textInput?.visible && textInputRef.current) {
         textInputRef.current.focus();
@@ -166,7 +165,6 @@ const EditPDF: React.FC = () => {
         handleUndo();
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-          // Don't delete if editing text
           if (textInput?.visible) return;
           if (selectedEditId) deleteSelected();
       }
@@ -215,14 +213,14 @@ const EditPDF: React.FC = () => {
     return { x: op.x, y: op.y, w, h };
   };
 
-  // --- Actions ---
-
   const hexToRgb = (hex: string) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
     const b = parseInt(hex.slice(5, 7), 16) / 255;
     return { r, g, b };
   };
+
+  // --- Actions ---
 
   const applyWatermark = () => {
     if (!wmSettings.text) return;
@@ -231,7 +229,6 @@ const EditPDF: React.FC = () => {
     const newEdits: PDFEditOperation[] = [];
     const color = hexToRgb(wmSettings.color);
     
-    // Canvas dimensions (visual)
     const canvasW = canvasRef.current?.width || 800;
     const canvasH = canvasRef.current?.height || 1000;
     
@@ -253,11 +250,11 @@ const EditPDF: React.FC = () => {
                 opacity: wmSettings.opacity
             });
         } else {
-            // Tiled
-            const gapX = 300;
-            const gapY = 300;
-            for (let y = 100; y < canvasH; y += gapY) {
-                for (let x = 100; x < canvasW; x += gapX) {
+            // Tiled - Expanded range to ensure coverage when rotated
+            const gapX = 350;
+            const gapY = 350;
+            for (let y = -200; y < canvasH + 200; y += gapY) {
+                for (let x = -200; x < canvasW + 200; x += gapX) {
                      newEdits.push({
                         id: Math.random().toString(36).substr(2, 9),
                         type: 'text',
@@ -337,7 +334,6 @@ const EditPDF: React.FC = () => {
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!file) return;
     
-    // If text input is open, commit it first (unless clicking inside input, which is handled by input events)
     if (textInput?.visible) {
         commitText();
         return;
@@ -346,19 +342,16 @@ const EditPDF: React.FC = () => {
     const { x, y } = getCanvasCoords(e);
     setDragStart({ x, y });
 
-    // 1. Text Tool - Open Inline Input
     if (activeTool === 'text') {
         setTextInput({ x, y, visible: true, value: '' });
         return;
     }
 
-    // 2. Stamp Tool
     if (activeTool === 'stamp') {
         let stampText = "";
         let stampColor = { r: 0.8, g: 0, b: 0 };
         
         if (selectedStampIdx === -1) {
-            // Custom
             const text = prompt(t('prompt_text'), "MY STAMP");
             if (!text) return;
             stampText = text;
@@ -388,7 +381,6 @@ const EditPDF: React.FC = () => {
         return;
     }
 
-    // 3. Cursor Mode
     if (activeTool === 'cursor') {
         undoSnapshotRef.current = edits;
         hasModifiedRef.current = false;
@@ -425,8 +417,8 @@ const EditPDF: React.FC = () => {
         return;
     }
 
-    // 4. Drawing Tools
-    if (['erase', 'shape-rect', 'shape-circle', 'shape-line', 'crop'].includes(activeTool)) {
+    // Removed 'crop' from allowed drawing tools
+    if (['erase', 'shape-rect', 'shape-circle', 'shape-line'].includes(activeTool)) {
         setInteractionMode('drawing');
         setCurrentDragRect({ x, y, w: 0, h: 0 });
     }
@@ -541,14 +533,8 @@ const EditPDF: React.FC = () => {
                 newOp.h = undefined;
             }
 
-            if (activeTool === 'crop') {
-                 const filtered = edits.filter(ed => !(ed.page === currPage && ed.type === 'crop'));
-                 setEdits([...filtered, newOp]);
-            } else {
-                setEdits([...edits, newOp]);
-            }
-            
-            if (['crop'].includes(activeTool)) setActiveTool('cursor');
+            // Removed crop logic
+            setEdits([...edits, newOp]);
         }
     }
 
@@ -588,47 +574,108 @@ const EditPDF: React.FC = () => {
         
         const scale = 1 / RENDER_SCALE;
 
-        // Visual Coordinates (Top-Left Origin)
+        // Visual Coordinates
         const vx = edit.x * scale;
         const vy = edit.y * scale;
         
-        // Map Visual (Top-Left) to PDF (Bottom-Left, Unrotated)
-        let pdfX = 0;
-        let pdfY = 0;
-        let contentRotation = (edit.rotation || 0);
+        // Content rotation should be negative of visual rotation to match PDF-Lib's CCW direction
+        // vs CSS's CW direction (if input was from visual tool).
+        const contentRotation = -(edit.rotation || 0);
 
-        // Correct logic for Visual Canvas -> PDF Coordinates mapping based on Page Rotation
-        if (rotation === 0) {
-            pdfX = vx;
-            pdfY = pageHeight - vy;
-        } else if (rotation === 90) {
-            // Visual X (Right) -> PDF Y (Up)
-            // Visual Y (Down) -> PDF X (Right)
-            pdfX = vy;
-            pdfY = vx; 
-            contentRotation -= 90; 
-        } else if (rotation === 180) {
-            pdfX = pageWidth - vx;
-            pdfY = vy;
-            contentRotation -= 180;
-        } else if (rotation === 270) {
-            pdfX = pageWidth - vy;
-            pdfY = pageHeight - vx;
-            contentRotation -= 270;
-        }
+        // --- COORDINATE MAPPING ---
+        // Map visual (Top-Left) coordinates to PDF (Bottom-Left)
+        // Adjust for Page Rotation (0, 90, 180, 270)
+        
+        // Helper: Map a point (visual x, visual y) to PDF point
+        const mapPoint = (x: number, y: number) => {
+             // 1. Flip Y for standard PDF
+             const standardPdfX = x;
+             const standardPdfY = pageHeight - y;
+             
+             if (rotation === 0) {
+                 return { x: standardPdfX, y: standardPdfY };
+             } else if (rotation === 90) {
+                 // Visual X (Right) -> PDF Y (Up)
+                 // Visual Y (Down) -> PDF X (Right)
+                 return { x: y, y: x }; 
+             } else if (rotation === 180) {
+                 return { x: pageWidth - x, y: y };
+             } else if (rotation === 270) {
+                 return { x: pageWidth - y, y: pageWidth - x };
+             }
+             return { x: standardPdfX, y: standardPdfY };
+        };
 
-        // --- DRAWING ---
+        // For shapes defined by center (like rects we draw from center), we map the visual center
+        // For shapes defined by top-left (text), we map the visual point.
+        
+        const p = mapPoint(vx, vy); // Mapped anchor point
+        
+        // Rotation Offset Logic for Shapes (Rect/Image/Stamp)
+        const drawCenteredShape = (w: number, h: number, drawFn: (opts: any) => void) => {
+            // 1. Visual Center
+            const vcx = vx + w/2;
+            const vcy = vy + h/2;
+            
+            // 2. Map to PDF Center
+            let pcx = 0, pcy = 0;
+            if (rotation === 0) { pcx = vcx; pcy = pageHeight - vcy; }
+            else if (rotation === 90) { pcx = vcy; pcy = vcx; }
+            else if (rotation === 180) { pcx = pageWidth - vcx; pcy = vcy; }
+            else if (rotation === 270) { pcx = pageWidth - vcy; pcy = pageHeight - vcx; }
+
+            // 3. Calculate Anchor
+            const rad = (contentRotation * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            
+            const dx = w/2;
+            const dy = h/2;
+            const rdx = dx * cos - dy * sin;
+            const rdy = dx * sin + dy * cos;
+            
+            const ax = pcx - rdx;
+            const ay = pcy - rdy;
+
+            drawFn({ x: ax, y: ay, rotate: degrees(contentRotation) });
+        };
+
         if (edit.type === 'text' && edit.content) {
              const pdfFontSize = (edit.size || 12) * scale;
              const color = edit.color ? rgb(edit.color.r, edit.color.g, edit.color.b) : rgb(0,0,0);
+             
+             // Adjust angle based on page rotation so text flows correctly visually
+             let finalRot = contentRotation;
+             if (rotation === 90) finalRot -= 90;
+             if (rotation === 180) finalRot -= 180;
+             if (rotation === 270) finalRot -= 270;
+
+             // FIX: Adjust Anchor from Top-Left (Visual) to Baseline (PDF)
+             // The visual editor places text at top-left. PDF draws from baseline.
+             // We need to shift the drawing point "Visually Down" by approx font height.
+             const textHeightOffset = pdfFontSize * 0.75;
+             
+             let drawX = p.x;
+             let drawY = p.y;
+
+             if (rotation === 0) {
+                 drawY -= textHeightOffset; // Visual Down is PDF Y-
+             } else if (rotation === 90) {
+                 drawX += textHeightOffset; // Visual Down is PDF X+
+             } else if (rotation === 180) {
+                 drawY += textHeightOffset; // Visual Down is PDF Y+
+             } else if (rotation === 270) {
+                 drawX -= textHeightOffset; // Visual Down is PDF X-
+             }
+
              page.drawText(edit.content, { 
-                 x: pdfX, 
-                 y: pdfY, 
+                 x: drawX, 
+                 y: drawY, 
                  size: pdfFontSize, 
                  font, 
                  color,
                  opacity: edit.opacity ?? 1,
-                 rotate: degrees(contentRotation)
+                 rotate: degrees(finalRot)
              });
         } 
         else if (edit.type === 'stamp' && edit.content) {
@@ -636,76 +683,38 @@ const EditPDF: React.FC = () => {
             const w = edit.w! * scale;
             const color = edit.color ? rgb(edit.color.r, edit.color.g, edit.color.b) : rgb(0.8, 0, 0);
 
-            // Calculate center of the stamp based on pdfX, pdfY (which are top-left of visual stamp)
-            // We need to offset from the "corner" pdfX, pdfY to the center of the box
-            // Note: pdfX/pdfY logic above maps visual Top-Left to a point on PDF.
-            // If Rotation=0: pdfX, pdfY is Top-Left of Rect. Center is x+w/2, y-h/2.
-            // If Rotation=90: pdfX, pdfY is visual Top-Left => PDF point. Visual Width goes to PDF Y.
-            // This is getting complex. Let's use Visual Center mapping, it's safer.
+            drawCenteredShape(w, h, (opts) => {
+                 page.drawRectangle({
+                    ...opts, width: w, height: h,
+                    borderColor: color, borderWidth: 3 * scale,
+                    opacity: edit.opacity ?? 1
+                 });
+                 
+                 const fontSize = h * 0.6; 
+                 const textWidth = fontBold.widthOfTextAtSize(edit.content!, fontSize);
+                 const tx = -textWidth / 2;
+                 const ty = -fontSize / 3; 
 
-            // 1. Find Visual Center
-            const vcx = vx + w/2;
-            const vcy = vy + h/2;
-
-            // 2. Map Visual Center to PDF Center
-            let pcx = 0;
-            let pcy = 0;
-            if (rotation === 0) { pcx = vcx; pcy = pageHeight - vcy; }
-            else if (rotation === 90) { pcx = vcy; pcy = vcx; }
-            else if (rotation === 180) { pcx = pageWidth - vcx; pcy = vcy; }
-            else if (rotation === 270) { pcx = pageWidth - vcy; pcy = pageHeight - vcx; }
-
-            // 3. Draw Rotated Rect around Center (pcx, pcy)
-            // drawRectangle rotates around its (x, y) anchor.
-            // We want center to be (pcx, pcy).
-            // Relative to anchor (x,y), unrotated center is (w/2, h/2).
-            // We need to solve for anchor (ax, ay) such that after rotation, center is (pcx, pcy).
-            // Rotated center = Rotate(anchor + (w/2, h/2)) = Rotate(anchor) + Rotate(w/2, h/2)? 
-            // No, Rotate is around anchor.
-            // Rotated Center Point = anchor + RotateVector((w/2, h/2), theta)
-            
-            const rad = (contentRotation * Math.PI) / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
-            
-            // Vector from anchor to center (unrotated)
-            const dx = w/2;
-            const dy = h/2;
-            
-            // Vector from anchor to center (rotated)
-            const rdx = dx * cos - dy * sin;
-            const rdy = dx * sin + dy * cos;
-            
-            // Anchor position
-            const ax = pcx - rdx;
-            const ay = pcy - rdy;
-
-            page.drawRectangle({
-                x: ax, y: ay,
-                width: w, height: h,
-                borderColor: color, borderWidth: 3 * scale,
-                rotate: degrees(contentRotation),
-                opacity: edit.opacity ?? 1
+                 const rad = (contentRotation * Math.PI) / 180;
+                 const rtx = tx * Math.cos(rad) - ty * Math.sin(rad);
+                 const rty = tx * Math.sin(rad) + ty * Math.cos(rad);
+                 
+                 const vcx = vx + w/2;
+                 const vcy = vy + h/2;
+                 let pcx = 0, pcy = 0;
+                 if (rotation === 0) { pcx = vcx; pcy = pageHeight - vcy; }
+                 else if (rotation === 90) { pcx = vcy; pcy = vcx; }
+                 else if (rotation === 180) { pcx = pageWidth - vcx; pcy = vcy; }
+                 else if (rotation === 270) { pcx = pageWidth - vcy; pcy = pageHeight - vcx; }
+                 
+                 page.drawText(edit.content!, {
+                     x: pcx + rtx,
+                     y: pcy + rty,
+                     size: fontSize, font: fontBold, color: color,
+                     opacity: edit.opacity ?? 1,
+                     rotate: opts.rotate
+                 });
             });
-             
-             // Text Centering
-             const fontSize = h * 0.6; 
-             const textWidth = fontBold.widthOfTextAtSize(edit.content, fontSize);
-             // Unrotated text offset relative to center (pcx, pcy)
-             const tdx = -textWidth / 2;
-             const tdy = -fontSize / 3; 
-
-             // Rotated text offset
-             const rtdx = tdx * cos - tdy * sin;
-             const rtdy = tdx * sin + tdy * cos;
-
-             page.drawText(edit.content, {
-                 x: pcx + rtdx,
-                 y: pcy + rtdy,
-                 size: fontSize, font: fontBold, color: color,
-                 opacity: edit.opacity ?? 1,
-                 rotate: degrees(contentRotation)
-             });
         }
         else if (edit.type === 'image' && edit.src) {
            try {
@@ -718,57 +727,65 @@ const EditPDF: React.FC = () => {
               const w = edit.w! * scale;
               const h = edit.h! * scale;
 
-              // Visual Center Mapping
-              const vcx = vx + w/2;
-              const vcy = vy + h/2;
-              let pcx = 0, pcy = 0;
-              if (rotation === 0) { pcx = vcx; pcy = pageHeight - vcy; }
-              else if (rotation === 90) { pcx = vcy; pcy = vcx; }
-              else if (rotation === 180) { pcx = pageWidth - vcx; pcy = vcy; }
-              else if (rotation === 270) { pcx = pageWidth - vcy; pcy = pageHeight - vcx; }
-              
-              // Image draws from bottom-left. We need to calculate anchor from center.
-              // Images can also be rotated in pdf-lib.
-              const rad = (contentRotation * Math.PI) / 180;
-              const cos = Math.cos(rad);
-              const sin = Math.sin(rad);
-              const dx = w/2;
-              const dy = h/2;
-              const rdx = dx * cos - dy * sin;
-              const rdy = dx * sin + dy * cos;
-              const ax = pcx - rdx;
-              const ay = pcy - rdy;
-
-              page.drawImage(embed, { 
-                  x: ax, 
-                  y: ay, 
-                  width: w, 
-                  height: h, 
-                  rotate: degrees(contentRotation),
-                  opacity: edit.opacity ?? 1
+              drawCenteredShape(w, h, (opts) => {
+                  page.drawImage(embed, { 
+                      ...opts, width: w, height: h,
+                      opacity: edit.opacity ?? 1
+                  });
               });
            } catch(e) { console.error(e); }
+        }
+        else if (edit.type === 'shape-rect') {
+            const h = edit.h! * scale;
+            const w = edit.w! * scale;
+            drawCenteredShape(w, h, (opts) => {
+                page.drawRectangle({ 
+                    ...opts, width: w, height: h, 
+                    borderColor: rgb(0,0,0), borderWidth: 2, 
+                    color: undefined, opacity: edit.opacity ?? 1 
+                });
+            });
+        }
+        else if (edit.type === 'shape-circle') {
+             const h = edit.h! * scale;
+             const w = edit.w! * scale;
+             const vcx = vx + w/2;
+             const vcy = vy + h/2;
+             let pcx = 0, pcy = 0;
+             if (rotation === 0) { pcx = vcx; pcy = pageHeight - vcy; }
+             else if (rotation === 90) { pcx = vcy; pcy = vcx; }
+             else if (rotation === 180) { pcx = pageWidth - vcx; pcy = vcy; }
+             else if (rotation === 270) { pcx = pageWidth - vcy; pcy = pageHeight - vcx; }
+
+             page.drawEllipse({
+                 x: pcx, y: pcy,
+                 xScale: w/2, yScale: h/2,
+                 borderColor: rgb(0,0,0), borderWidth: 2,
+                 color: undefined,
+                 opacity: edit.opacity ?? 1,
+                 rotate: degrees(contentRotation)
+             });
+        }
+        else if (edit.type === 'shape-line') {
+             const startP = mapPoint(vx, vy);
+             const endVx = (edit.endX || vx) * scale;
+             const endVy = (edit.endY || vy) * scale;
+             const endP = mapPoint(endVx, endVy);
+
+             page.drawLine({
+                 start: { x: startP.x, y: startP.y },
+                 end: { x: endP.x, y: endP.y },
+                 thickness: 2,
+                 color: rgb(0,0,0),
+                 opacity: edit.opacity ?? 1
+             });
         }
         else if (edit.type === 'erase') {
             const h = edit.h! * scale;
             const w = edit.w! * scale;
-            const vcx = vx + w/2;
-            const vcy = vy + h/2;
-            let pcx = 0, pcy = 0;
-            if (rotation === 0) { pcx = vcx; pcy = pageHeight - vcy; }
-            else if (rotation === 90) { pcx = vcy; pcy = vcx; }
-            else if (rotation === 180) { pcx = pageWidth - vcx; pcy = vcy; }
-            else if (rotation === 270) { pcx = pageWidth - vcy; pcy = pageHeight - vcx; }
-
-            const rad = (contentRotation * Math.PI) / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
-            const rdx = (w/2) * cos - (h/2) * sin;
-            const rdy = (w/2) * sin + (h/2) * cos;
-            const ax = pcx - rdx;
-            const ay = pcy - rdy;
-
-            page.drawRectangle({ x: ax, y: ay, width: w, height: h, color: rgb(1,1,1), rotate: degrees(contentRotation) });
+            drawCenteredShape(w, h, (opts) => {
+                page.drawRectangle({ ...opts, width: w, height: h, color: rgb(1,1,1) });
+            });
         }
       }
       const pdfBytes = await exportDoc.save();
@@ -852,7 +869,7 @@ const EditPDF: React.FC = () => {
                            <div>
                               <label className="text-sm font-medium text-slate-600 block mb-1">Rotation ({wmSettings.rotation}°)</label>
                               <input 
-                                type="range" min="0" max="360"
+                                type="range" min="-180" max="180"
                                 className="w-full"
                                 value={wmSettings.rotation}
                                 onChange={e => setWmSettings({...wmSettings, rotation: Number(e.target.value)})}
@@ -913,7 +930,7 @@ const EditPDF: React.FC = () => {
           </div>
 
           <div className="flex gap-1 px-3 border-r border-slate-100">
-             <ToolButton tool="crop" icon={Crop} label={t('edit_tool_crop')} />
+             {/* Removed Crop Tool */}
              <button onClick={() => setShowWatermarkModal(true)} disabled={!file} className="flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] text-slate-500 hover:bg-slate-100">
                  <FileBadge size={20} className="mb-1" />
                  <span className="text-[10px] font-medium leading-tight">{t('edit_watermark')}</span>
@@ -1051,17 +1068,14 @@ const EditPDF: React.FC = () => {
                              <line x1={0} y1={0} x2={e.endX! - e.x} y2={e.endY! - e.y} stroke="black" strokeWidth="2" />
                         </svg>
                       )}
-                      {e.type === 'crop' && (
-                        <div className="w-full h-full border-2 border-dashed border-slate-800 bg-black/10 flex items-center justify-center">
-                            <span className="bg-black text-white text-xs px-1">{t('crop_area')}</span>
-                        </div>
-                      )}
+                      {/* Removed Crop Overlay */}
                       {e.type === 'stamp' && (
                         <div 
                             className="w-full h-full border-4 font-black flex items-center justify-center tracking-widest" 
                             style={{ 
                                 borderColor: `rgb(${e.color?.r! * 255}, ${e.color?.g! * 255}, ${e.color?.b! * 255})`,
                                 color: `rgb(${e.color?.r! * 255}, ${e.color?.g! * 255}, ${e.color?.b! * 255})`,
+                                fontSize: `${rect.h * 0.6}px`
                             }}
                         >
                             {e.content}
