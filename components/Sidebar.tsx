@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, Home, X, Globe } from 'lucide-react';
+import { Layers, Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, Home, X, Globe, ImagePlus } from 'lucide-react';
 import { ToolType, NavItemProps } from '../types';
 import { useLanguage, languages, Language } from './LanguageContext';
 
@@ -89,6 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen = fals
           
           <p className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-6">{t('nav_smart_tools')}</p>
           <NavItem id={ToolType.IMG_TO_PDF} label={t('img_to_pdf')} icon={<ImageIcon size={20} />} isActive={activeTab === ToolType.IMG_TO_PDF} onClick={handleNavClick} />
+          <NavItem id={ToolType.EXTRACT_IMAGES} label={t('extract_images')} icon={<ImagePlus size={20} />} isActive={activeTab === ToolType.EXTRACT_IMAGES} onClick={handleNavClick} />
           <NavItem id={ToolType.CONVERT} label={t('convert_pdf')} icon={<RefreshCw size={20} />} isActive={activeTab === ToolType.CONVERT} onClick={handleNavClick} />
         </nav>
 

@@ -6,6 +6,7 @@ import SplitPDF from './features/SplitPDF';
 import ImageToPDF from './features/ImageToPDF';
 import ConvertPDF from './features/ConvertPDF';
 import EditPDF from './features/EditPDF';
+import ExtractImages from './features/ExtractImages';
 import Dashboard from './features/Dashboard';
 import { ToolType } from './types';
 import { LanguageProvider, useLanguage } from './components/LanguageContext';
@@ -29,6 +30,8 @@ const AppContent: React.FC = () => {
         return <ConvertPDF />;
       case ToolType.EDIT:
         return <EditPDF />;
+      case ToolType.EXTRACT_IMAGES:
+        return <ExtractImages />;
       default:
         return <Dashboard onNavigate={setActiveTab} />;
     }

@@ -6,6 +6,7 @@ export enum ToolType {
   MERGE = 'merge',
   SPLIT = 'split',
   IMG_TO_PDF = 'img2pdf',
+  EXTRACT_IMAGES = 'extract_images',
   CONVERT = 'convert',
 }
 

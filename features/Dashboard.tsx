@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
+import { Edit3, Files, Scissors, Image as ImageIcon, RefreshCw, ArrowRight, ShieldCheck, Zap, ImagePlus } from 'lucide-react';
 import { ToolType } from '../types';
 import { useLanguage } from '../components/LanguageContext';
 
@@ -96,6 +96,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             icon={<ImageIcon size={24} className="text-green-600" />}
             color="bg-green-50"
             onClick={() => onNavigate(ToolType.IMG_TO_PDF)}
+            startText={t('start_using')}
+          />
+          <ToolCard 
+            title={t('extract_images')}
+            desc={t('tool_desc_extract_img')}
+            icon={<ImagePlus size={24} className="text-pink-600" />}
+            color="bg-pink-50"
+            onClick={() => onNavigate(ToolType.EXTRACT_IMAGES)}
             startText={t('start_using')}
           />
           <ToolCard 

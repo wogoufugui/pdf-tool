@@ -1,27 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import saveAs from 'file-saver';
-import { FileType, Loader2, Wand2, UploadCloud, ArrowRightLeft, FileText, FileSpreadsheet } from 'lucide-react';
+import { FileType, Loader2, Wand2, UploadCloud, ScanEye, AlertTriangle, Check } from 'lucide-react';
 import FileUploader from '../components/FileUploader';
-import { convertToTable } from '../services/geminiService';
+import { convertToTable, performOCR } from '../services/geminiService';
 import { useLanguage } from '../components/LanguageContext';
-// @ts-ignore
-import * as mammoth from 'mammoth';
-// @ts-ignore
-import * as XLSX from 'xlsx';
-
-type ConversionMode = 'pdf-to-file' | 'file-to-pdf';
 
 const ConvertPDF: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [mode, setMode] = useState<ConversionMode>('pdf-to-file');
   const [target, setTarget] = useState<'word' | 'excel' | 'txt'>('word');
   const [processing, setProcessing] = useState(false);
+  const [progress, setProgress] = useState(0); // Track page progress
   const [isDragOver, setIsDragOver] = useState(false);
+  const [useOCR, setUseOCR] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const { t } = useLanguage();
 
   const handleFile = (f: File) => {
     setFile(f);
+    setUseOCR(false); // Reset on new file
+    setProgress(0);
   };
 
   const onDragOver = (e: React.DragEvent) => {
@@ -41,139 +39,118 @@ const ConvertPDF: React.FC = () => {
       const droppedFile = e.dataTransfer.files[0];
       const name = droppedFile.name.toLowerCase();
       
-      if (mode === 'pdf-to-file') {
-        if (droppedFile.type === 'application/pdf' || name.endsWith('.pdf')) {
-          handleFile(droppedFile);
-        } else {
-          alert(t('alert_only_pdf'));
-        }
+      if (droppedFile.type === 'application/pdf' || name.endsWith('.pdf')) {
+        handleFile(droppedFile);
       } else {
-        if (name.endsWith('.docx') || name.endsWith('.xlsx') || name.endsWith('.xls')) {
-          handleFile(droppedFile);
-        } else {
-          alert(t('convert_upload_file_to_pdf')); 
-        }
+        alert(t('alert_only_pdf'));
       }
     }
   };
 
-  const convertFileToPdf = async () => {
-    if (!file) return;
-    setProcessing(true);
-    try {
-        const arrayBuffer = await file.arrayBuffer();
-        let htmlContent = "";
+  // Helper to render a PDF page to a base64 image string
+  const renderPageToImage = async (page: any): Promise<string> => {
+    const viewport = page.getViewport({ scale: 1.5 }); // Good balance of quality and size
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const context = canvas.getContext('2d');
+    
+    if (!context) throw new Error("Canvas context failed");
 
-        if (file.name.endsWith('.docx')) {
-            const result = await mammoth.convertToHtml({ arrayBuffer });
-            htmlContent = `
-                <div style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; color: #000; padding: 20px;">
-                    <style>
-                        p { margin-bottom: 10pt; }
-                        table { border-collapse: collapse; width: 100%; margin-bottom: 10pt; }
-                        td, th { border: 1px solid #000; padding: 4pt; }
-                        img { max-width: 100%; height: auto; }
-                        h1, h2, h3, h4, h5, h6 { margin-top: 15pt; margin-bottom: 10pt; font-family: Arial, sans-serif; }
-                    </style>
-                    ${result.value}
-                </div>
-            `;
-        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-            const workbook = XLSX.read(arrayBuffer);
-            let sheetsHtml = "";
-            
-            workbook.SheetNames.forEach((name: string) => {
-                const sheet = workbook.Sheets[name];
-                // Check if sheet has a range (not empty)
-                if (sheet['!ref']) {
-                    const html = XLSX.utils.sheet_to_html(sheet);
-                    // Minimal styling wrapper for the table
-                    if (html) {
-                        sheetsHtml += `
-                            <div style="page-break-after: always; margin-bottom: 30px;">
-                                <h3 style="border-bottom: 2px solid #3b82f6; color: #1e3a8a; padding-bottom: 5px; margin-bottom: 15px;">${name}</h3>
-                                ${html}
-                            </div>
-                        `;
-                    }
-                }
-            });
-
-            htmlContent = `
-                <div style="font-family: Arial, sans-serif; font-size: 10pt; padding: 20px;">
-                    <style>
-                        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-                        td, th { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }
-                        tr:nth-child(even) { background-color: #f8fafc; }
-                        th { background-color: #e2e8f0; font-weight: bold; }
-                    </style>
-                    ${sheetsHtml}
-                </div>
-            `;
-        }
-
-        const container = document.createElement('div');
-        container.innerHTML = htmlContent;
-
-        const opt = {
-            margin:       10, // mm
-            filename:     `${file.name.split('.')[0]}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-
-        // Check for html2pdf
-        // @ts-ignore
-        if (window.html2pdf) {
-             // @ts-ignore
-             await window.html2pdf().set(opt).from(container).save();
-        } else {
-             console.error("html2pdf library missing");
-             alert("PDF generation component not loaded. Please refresh the page.");
-        }
-
-    } catch (e) {
-        console.error(e);
-        alert(t('alert_convert_fail'));
-    } finally {
-        setProcessing(false);
-    }
+    await page.render({ canvasContext: context, viewport }).promise;
+    return canvas.toDataURL('image/png');
   };
 
   const convertPdfToFile = async () => {
     if (!file) return;
     setProcessing(true);
+    setProgress(0);
+
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let text = '';
+      let finalContent = '';
       
-      const maxPages = Math.min(pdf.numPages, 20); // Limit to 20 pages for client-side perf
-      for (let i = 1; i <= maxPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map((item: any) => item.str).join(' ') + '\n\n';
+      // Limit pages for client-side processing to prevent timeout/quota issues
+      // For OCR (images), we might want a stricter limit or process sequentially
+      const maxPages = Math.min(pdf.numPages, useOCR ? 5 : 20); 
+
+      // --- STRATEGY A: OCR (Visual Recognition) ---
+      if (useOCR) {
+        for (let i = 1; i <= maxPages; i++) {
+          setProgress(Math.round((i / maxPages) * 100));
+          const page = await pdf.getPage(i);
+          const imageBase64 = await renderPageToImage(page);
+          const pageResult = await performOCR(imageBase64, target);
+          finalContent += pageResult + '\n\n';
+        }
+      } 
+      // --- STRATEGY B: Standard Text Extraction ---
+      else {
+        let rawText = '';
+        for (let i = 1; i <= maxPages; i++) {
+          setProgress(Math.round((i / maxPages) * 100));
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          
+          const pageText = content.items.map((item: any) => {
+              if (!item.str) return ''; 
+              return item.hasEOL ? item.str + '\n' : item.str + ' ';
+          }).join('');
+          
+          rawText += pageText + '\n\n';
+        }
+
+        // Scan detection check
+        if (!rawText.trim()) {
+          const confirmOCR = window.confirm(t('alert_scan_detected'));
+          if (confirmOCR) {
+            setUseOCR(true);
+            setProcessing(false);
+            // The user will click convert again, or we could recursively call convertPdfToFile here
+            // But for safety/state updates, let's let them click the button again or trigger it via effect
+            return; 
+          } else {
+             alert(t('alert_convert_empty'));
+             setProcessing(false);
+             return;
+          }
+        }
+
+        // Post-processing text
+        if (target === 'excel') {
+           finalContent = await convertToTable(rawText);
+        } else {
+           finalContent = rawText;
+        }
       }
 
+      // --- SAVE FILE ---
       if (target === 'txt') {
-        saveAs(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'converted.txt');
-      } else if (target === 'word') {
-        // Minimal HTML wrapper for Word
+        // Strip HTML tags if we came from OCR mode which returns HTML-like structure sometimes
+        const plainText = useOCR ? finalContent.replace(/<[^>]*>?/gm, '') : finalContent;
+        saveAs(new Blob([plainText], { type: 'text/plain;charset=utf-8' }), 'converted.txt');
+      } 
+      else if (target === 'word') {
+        const htmlBody = useOCR ? finalContent : `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalContent}</pre>`;
         const html = `
           <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-          <head><meta charset='utf-8'></head><body><pre style="font-family: sans-serif; white-space: pre-wrap;">${text}</pre></body></html>`;
+          <head><meta charset='utf-8'></head><body>${htmlBody}</body></html>`;
         saveAs(new Blob([html], { type: 'application/msword' }), 'converted.doc');
-      } else if (target === 'excel') {
-        const tableHtml = await convertToTable(text);
-        const excelHtml = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>${tableHtml}</body></html>`;
+      } 
+      else if (target === 'excel') {
+        // OCR returns <table> directly. Standard returns <table> from geminiService.
+        // Wrap in HTML for Excel to interpret
+        const excelHtml = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>${finalContent}</body></html>`;
         saveAs(new Blob([excelHtml], { type: 'application/vnd.ms-excel' }), 'converted.xls');
       }
+
     } catch (e) {
       console.error(e);
       alert(t('alert_convert_fail'));
     } finally {
       setProcessing(false);
+      setProgress(0);
     }
   };
 
@@ -200,79 +177,80 @@ const ConvertPDF: React.FC = () => {
         <p className="text-slate-500 mt-2">{t('convert_desc')}</p>
       </div>
 
-      <div className="flex justify-center mb-6">
-        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex">
-          <button
-            onClick={() => { setMode('pdf-to-file'); setFile(null); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-              mode === 'pdf-to-file' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <FileType size={16} /> {t('convert_mode_pdf_to_file')}
-          </button>
-          <button
-            onClick={() => { setMode('file-to-pdf'); setFile(null); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-              mode === 'file-to-pdf' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <ArrowRightLeft size={16} /> {t('convert_mode_file_to_pdf')}
-          </button>
-        </div>
-      </div>
-
       {!file ? (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
            <FileUploader 
             onFilesSelected={(fs) => handleFile(fs[0])} 
-            accept={mode === 'pdf-to-file' ? ".pdf" : ".docx,.xlsx,.xls"} 
-            label={mode === 'pdf-to-file' ? t('convert_upload_label') : t('convert_upload_file_to_pdf')} 
+            accept=".pdf" 
+            label={t('convert_upload_label')} 
            />
         </div>
       ) : (
         <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-2xl mx-auto text-center">
           <div className="inline-block p-4 bg-blue-50 rounded-full mb-4">
-              {mode === 'pdf-to-file' ? <FileType size={32} className="text-blue-600"/> : <FileText size={32} className="text-blue-600"/>}
+              <FileType size={32} className="text-blue-600"/>
           </div>
           <h3 className="text-xl font-bold text-slate-800 mb-6">{file.name}</h3>
           
-          {mode === 'pdf-to-file' && (
-            <div className="grid grid-cols-3 gap-3 mb-8">
-              {['word', 'excel', 'txt'].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTarget(t as any)}
-                  className={`p-4 border rounded-xl capitalize font-medium transition-all ${
-                    target === t 
-                    ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-300 border-transparent' 
-                    : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {['word', 'excel', 'txt'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setTarget(t as any)}
+                className={`p-4 border rounded-xl capitalize font-medium transition-all ${
+                  target === t 
+                  ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-300 border-transparent' 
+                  : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
 
-          {mode === 'pdf-to-file' && (
-            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-sm mb-6 text-left">
-                <span className="font-bold">{t('convert_note')}</span> {t('convert_note_text')}
-            </div>
-          )}
+          {/* OCR Toggle */}
+          <div 
+            className={`mb-8 p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
+                useOCR ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200 hover:border-indigo-200'
+            }`}
+            onClick={() => setUseOCR(!useOCR)}
+          >
+             <div className={`p-2 rounded-lg ${useOCR ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                <ScanEye size={20} />
+             </div>
+             <div className="flex-1 text-left">
+                <div className="font-semibold text-slate-800 flex items-center gap-2">
+                    {t('convert_ocr_title')}
+                    {useOCR && <Check size={16} className="text-indigo-600" />}
+                </div>
+                <div className="text-xs text-slate-500">{t('convert_ocr_desc')}</div>
+             </div>
+             <div className={`w-12 h-6 rounded-full p-1 transition-colors ${useOCR ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                 <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${useOCR ? 'translate-x-6' : 'translate-x-0'}`}></div>
+             </div>
+          </div>
 
-          {mode === 'file-to-pdf' && (
-             <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-blue-800 text-sm mb-6 text-left">
-                {t('convert_warn_layout')}
-            </div>
-          )}
+          <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-sm mb-6 text-left flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div>
+                <span className="font-bold">{t('convert_note')}</span> {useOCR ? t('convert_note_ocr') : t('convert_note_text')}
+              </div>
+          </div>
 
           <button
-            onClick={mode === 'pdf-to-file' ? convertPdfToFile : convertFileToPdf}
+            onClick={convertPdfToFile}
             disabled={processing}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all flex justify-center items-center gap-2"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-semibold shadow-lg shadow-blue-200 transition-all flex justify-center items-center gap-2 relative overflow-hidden"
           >
-            {processing ? <Loader2 className="animate-spin" /> : <Wand2 size={20}/>}
-            {processing ? t('convert_processing') : (mode === 'pdf-to-file' ? t('btn_start_convert') : t('convert_btn_to_pdf'))}
+            {processing && (
+                 <div className="absolute inset-0 bg-blue-700 w-full flex items-center justify-start">
+                    <div className="h-full bg-blue-500/50 transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                 </div>
+            )}
+            <div className="relative flex items-center gap-2 z-10">
+                {processing ? <Loader2 className="animate-spin" /> : <Wand2 size={20}/>}
+                {processing ? `${t('convert_processing')} ${progress}%` : t('btn_start_convert')}
+            </div>
           </button>
           
           <button onClick={() => setFile(null)} className="mt-4 text-sm text-slate-400 hover:text-slate-600 underline">

@@ -5,17 +5,19 @@ import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker
 try {
-  // Use the imported namespace directly. 
-  // In modern bundlers with pdfjs-dist v4+, the exports are named.
+  // Use the imported namespace directly.
   const lib = pdfjsLib;
-  const pdfJsVersion = lib.version || '4.4.168';
+  
+  // Explicitly set the worker version to match the importmap version (5.4.449)
+  // to prevent version mismatch errors which cause blank output.
+  const workerUrl = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs";
   
   // Ensure GlobalWorkerOptions exists and set the worker source
   if (lib.GlobalWorkerOptions) {
-    lib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfJsVersion}/build/pdf.worker.min.mjs`;
+    lib.GlobalWorkerOptions.workerSrc = workerUrl;
   } else {
     // Fallback for older versions or different environments
-    (window as any).pdfjsWorker = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfJsVersion}/build/pdf.worker.min.mjs`;
+    (window as any).pdfjsWorker = workerUrl;
   }
 } catch (e) {
   console.warn("Error configuring PDF.js worker:", e);
