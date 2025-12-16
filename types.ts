@@ -20,7 +20,7 @@ export interface NavItemProps {
 
 export interface PDFEditOperation {
   id: string; // Unique ID for deletion/selection
-  type: 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'link' | 'crop' | 'stamp';
+  type: 'text' | 'image' | 'erase' | 'shape-rect' | 'shape-circle' | 'shape-line' | 'crop' | 'stamp';
   page: number;
   x: number;
   y: number;
@@ -30,13 +30,14 @@ export interface PDFEditOperation {
   content?: string;
   size?: number;
   color?: { r: number, g: number, b: number };
+  // Visual properties
+  rotation?: number; // degrees
+  opacity?: number; // 0 to 1
   // Image
   src?: string;
   // Line
   endX?: number;
   endY?: number;
-  // Link
-  url?: string;
 }
 
 export interface FileWithPreview extends File {
